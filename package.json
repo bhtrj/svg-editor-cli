@@ -11,6 +11,7 @@
     "cli": "tsx src/cli/main.ts",
     "demo": "tsx src/cli/main.ts --script scripts/demo.cli",
     "flowchart": "tsx src/cli/main.ts --script scripts/flowchart.cli",
+    "flowchart-box": "tsx src/cli/main.ts --plugin box --script scripts/box.cli",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

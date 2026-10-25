@@ -27,7 +27,7 @@ export class TreeRenderer {
   /** `tree <id>`: the shape's own row, then its subtree. */
   renderSubtree(shape: Shape): readonly string[] {
     const summary = shape.summary();
-    const head = summary === "" ? shape.label : `${shape.label}  ${summary}`;
+    const head = summary === "" ? shape.treeLabel : `${shape.treeLabel}  ${summary}`;
     return [head, ...TreeRenderer.#format(this.#collect(shape.children, ""))];
   }
 
@@ -36,7 +36,7 @@ export class TreeRenderer {
     const rows: TreeRow[] = [];
     children.forEach((child, index) => {
       const last = index === children.length - 1;
-      rows.push(new TreeRow(`${indent}${last ? "└── " : "├── "}`, child.label, child.summary()));
+      rows.push(new TreeRow(`${indent}${last ? "└── " : "├── "}`, child.treeLabel, child.summary()));
       if (child.children.length > 0) {
         const childIndent = `${indent}${last ? "    " : "│   "}`;
         rows.push(...this.#collect(child.children, childIndent));

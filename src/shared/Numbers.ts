@@ -50,4 +50,24 @@ export class Numbers {
     }
     return value;
   }
+
+  /**
+   * Reads a required numeric attribute out of a values map — the shared path for
+   * `create` parameters and for attributes parsed out of an SVG file, so a plugin
+   * provider validates exactly like the kernel's built-in types do.
+   *
+   * `owner` names the type in the message (`missing attribute: x (in <box>)`).
+   */
+  static require(values: ReadonlyMap<string, string>, name: string, owner: string): number {
+    const raw = values.get(name);
+    if (raw === undefined) {
+      throw new EditorError(`missing attribute: ${name} (in <${owner}>)`);
+    }
+    const trimmed = raw.trim();
+    const value = Number(trimmed);
+    if (trimmed === "" || !Number.isFinite(value)) {
+      throw new EditorError(`invalid number: ${raw}`);
+    }
+    return value;
+  }
 }

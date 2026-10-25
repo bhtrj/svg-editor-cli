@@ -12,10 +12,8 @@ import type { CommandContext } from "./CommandContext.js";
 export class SetAttributeCommand extends AbstractEditCommand {
   static readonly usage = 'set <id> <attr> <value>   (value may be "quoted text")';
 
-  #label = "";
-  #attribute = "";
-  #previous = "";
-  #next = "";
+  #undoMessage = "";
+  #redoMessage = "";
 
   private constructor(
     context: CommandContext,
@@ -36,35 +34,24 @@ export class SetAttributeCommand extends AbstractEditCommand {
 
   protected apply(): readonly string[] {
     const shape = this.context.shape(this.id);
-    this.#label = shape.label;
-    this.#attribute = this.attribute;
-    this.#previous = shape.readAttribute(this.attribute) ?? "";
+    const previous = shape.readAttribute(this.attribute) ?? "";
 
     shape.setAttribute(this.attribute, this.value);
-    this.#next = shape.readAttribute(this.attribute) ?? this.value;
+    const next = shape.readAttribute(this.attribute) ?? this.value;
 
-    return [this.updatedMessage()];
+    // The wording belongs to the shape (`box` says "propagated to n1-rect"),
+    // and the previous command object may not outlive the undo memento, so both
+    // lines are rendered now and kept as strings.
+    this.#redoMessage = shape.setFeedback(this.attribute, next);
+    this.#undoMessage = shape.setUndoFeedback(this.attribute, previous);
+    return [this.#redoMessage];
   }
 
   protected renderUndo(): readonly string[] {
-    return [
-      `${this.#label} updated: ${this.#attribute}=${SetAttributeCommand.quoteIfText(this.#attribute, this.#previous)}`,
-    ];
+    return [this.#undoMessage];
   }
 
   protected renderRedo(): readonly string[] {
-    return [this.updatedMessage()];
-  }
-
-  private updatedMessage(): string {
-    return `${this.#label} updated: ${this.#attribute}=${SetAttributeCommand.quoteIfText(this.#attribute, this.#next)}`;
-  }
-
-  /**
-   * The transcript quotes text content (`text="My Diagram"`) but not geometry
-   * (`text` is the one attribute whose value may contain spaces).
-   */
-  private static quoteIfText(attribute: string, value: string): string {
-    return attribute === "text" ? `"${value}"` : value;
+    return [this.#redoMessage];
   }
 }

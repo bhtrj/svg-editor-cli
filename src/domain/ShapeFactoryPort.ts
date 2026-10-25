@@ -16,4 +16,12 @@ export interface ShapeFactoryPort {
    * @throws EditorError when a required attribute is not a number.
    */
   createFromAttributes(tag: string, attributes: ReadonlyMap<string, string>): Shape;
+  /**
+   * Rebuilds a plugin composite whose element carries `data-kind` (§4.4), with no
+   * parts of its own — the reader inserts the file's children afterwards.
+   *
+   * Returns `null` when no loaded plugin claims the kind, so the element degrades
+   * to a plain container.
+   */
+  restoreComposite(kind: string, id: string): Shape | null;
 }

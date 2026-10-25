@@ -66,6 +66,45 @@ export abstract class Shape {
   }
 
   /**
+   * How feedback lines name this shape.
+   *
+   * Equal to `label` everywhere except a plugin composite, whose element is a
+   * `<g>` but which the CLI reports as `box#n1` (§4.4).
+   */
+  get commandLabel(): string {
+    return this.label;
+  }
+
+  /** How `tree` names this shape; `g#n1 (box)` for a plugin composite (§4.4). */
+  get treeLabel(): string {
+    return this.label;
+  }
+
+  /**
+   * A container whose internal structure belongs to its provider rather than to
+   * the user (§4.4). Such a shape *is* a container, but `ungroup` refuses it with
+   * `cannot ungroup composite shape` (§4.2) — the provider owns the parts.
+   */
+  get isComposite(): boolean {
+    return false;
+  }
+
+  /** Success line for `create`; a plugin composite enriches it with its parts. */
+  creationFeedback(): string {
+    return `${this.commandLabel} created`;
+  }
+
+  /** Feedback for one `set`; a shape owns the wording of its own attributes. */
+  setFeedback(name: string, value: string): string {
+    return `${this.commandLabel} updated: ${name}=${Shape.quoted(name, value)}`;
+  }
+
+  /** Feedback for undoing that `set`, quoting the previous value. */
+  setUndoFeedback(name: string, value: string): string {
+    return this.setFeedback(name, value);
+  }
+
+  /**
    * The container view of this shape, or `null` for leaves.
    *
    * Avoids `instanceof Group` checks outside the domain: callers ask a shape
@@ -229,6 +268,20 @@ export abstract class Shape {
       count += 1 + child.descendantCount();
     }
     return count;
+  }
+
+  /** This shape's descendants, depth-first (used to validate derived part ids). */
+  descendants(): readonly Shape[] {
+    const found: Shape[] = [];
+    for (const child of this.children) {
+      found.push(child, ...child.descendants());
+    }
+    return found;
+  }
+
+  /** Text content is the one attribute feedback quotes (§6). */
+  private static quoted(name: string, value: string): string {
+    return name === "text" ? `"${value}"` : value;
   }
 
   private static parseNumeric(value: string): number {

@@ -1,4 +1,5 @@
 import { EditorError } from "../shared/EditorError.js";
+import { Numbers } from "../shared/Numbers.js";
 import { Circle } from "./Circle.js";
 import { Ellipse } from "./Ellipse.js";
 import { Group } from "./Group.js";
@@ -6,16 +7,17 @@ import { Line } from "./Line.js";
 import { Rect } from "./Rect.js";
 import type { Shape } from "./Shape.js";
 import type { ShapeFactoryPort } from "./ShapeFactoryPort.js";
+import type { ShapeProvider } from "./ShapeProvider.js";
 import type { ShapeTypeSpec } from "./ShapeTypeSpec.js";
 import { Text } from "./Text.js";
 
 /**
  * The single place where an SVG tag / CLI type name is turned into a class —
- * one of the two name-based dispatches the assignment explicitly allows, and
- * therefore flagged for refactoring into a plugin registry (see doc/README.md,
- * "设计模式" and "变化点假设").
+ * one of the two name-based dispatches the assignment explicitly allows.
  *
- * Everything else (commands, reader, renderer) talks to shapes through `Shape`.
+ * The six built-in types are the kernel; anything else must come from a
+ * `ShapeProvider` plugin handed to the constructor, so "unknown type" and
+ * "plugin not loaded" are the same code path and the dispatch stays here.
  */
 export class ShapeFactory implements ShapeFactoryPort {
   static readonly SPECS: readonly ShapeTypeSpec[] = [
@@ -72,25 +74,37 @@ export class ShapeFactory implements ShapeFactoryPort {
   readonly #specs = new Map<string, ShapeTypeSpec>(
     ShapeFactory.SPECS.map((spec) => [spec.type, spec]),
   );
+  readonly #providers: readonly ShapeProvider[];
+  readonly #byType = new Map<string, ShapeProvider>();
+  readonly #byKind = new Map<string, ShapeProvider>();
 
-  /** The spec for a CLI type name, or `null` when the type is not registered. */
+  /** @param providers plugin types to make available (empty = kernel only). */
+  constructor(providers: readonly ShapeProvider[] = []) {
+    this.#providers = providers;
+    for (const provider of providers) {
+      this.#byType.set(provider.typeName, provider);
+      this.#byKind.set(provider.kind, provider);
+    }
+  }
+
+  /** The spec for a CLI type name, or `null` when no kernel type or plugin has it. */
   spec(type: string): ShapeTypeSpec | null {
-    return this.#specs.get(type) ?? null;
+    return this.#specs.get(type) ?? this.#byType.get(type)?.spec ?? null;
   }
 
-  /** All registered specs, for `help`. */
+  /** All registered specs — six kernel types plus whatever the plugins add. */
   get specs(): readonly ShapeTypeSpec[] {
-    return ShapeFactory.SPECS;
+    return [...ShapeFactory.SPECS, ...this.#providers.map((provider) => provider.spec)];
   }
 
-  /** Lua-style type name validation, shared by `create` and the reader. */
+  /** Type name validation, shared by `create` and the reader. */
   supports(tag: string): boolean {
-    return this.#specs.has(tag);
+    return this.#specs.has(tag) || this.#byType.has(tag);
   }
 
   /**
    * Builds a shape from already-validated CLI values.
-   * @throws EditorError for an unregistered type.
+   * @throws EditorError for a type the kernel does not know and no plugin claims.
    */
   create(type: string, values: ReadonlyMap<string, string>): Shape {
     const id = values.get("id") ?? "";
@@ -147,8 +161,13 @@ export class ShapeFactory implements ShapeFactoryPort {
         );
       case "g":
         return new Group(id);
-      default:
-        throw new EditorError(`unknown shape type: ${type} (is the plugin loaded?)`);
+      default: {
+        const provider = this.#byType.get(type);
+        if (provider === undefined) {
+          throw new EditorError(`unknown shape type: ${type} (is the plugin loaded?)`);
+        }
+        return provider.create(id, values);
+      }
     }
   }
 
@@ -160,20 +179,23 @@ export class ShapeFactory implements ShapeFactoryPort {
     return this.create(tag, attributes);
   }
 
+  /**
+   * Restores a plugin composite from its `data-kind` marker (§4.4).
+   *
+   * `null` when no loaded plugin claims the kind, which is how an editor without
+   * the plugin degrades a marked `<g>` to a plain container.
+   */
+  restoreComposite(kind: string, id: string): Shape | null {
+    const provider = this.#byKind.get(kind);
+    return provider === undefined ? null : provider.restore(id);
+  }
+
   private num(
     type: string,
     values: ReadonlyMap<string, string>,
     name: string,
   ): number {
-    const raw = values.get(name);
-    if (raw === undefined) {
-      throw new EditorError(`missing attribute: ${name} (in <${type}>)`);
-    }
-    const value = Number(raw);
-    if (raw.trim() === "" || !Number.isFinite(value)) {
-      throw new EditorError(`invalid number: ${raw}`);
-    }
-    return value;
+    return Numbers.require(values, name, type);
   }
 
   private applyPaint(shape: Shape, values: ReadonlyMap<string, string>, name: string): void {

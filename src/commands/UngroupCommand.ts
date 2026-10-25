@@ -7,8 +7,12 @@ import type { CommandContext } from "./CommandContext.js";
 /**
  * `ungroup <gid>` — dissolve a container, promoting its children in place.
  *
- * Rejected for root-level containers (§4.2): the root level has no sibling slot
- * to promote into, and allowing it would silently flatten a whole diagram.
+ * Two rejections, in this order (§4.2):
+ *  - a *composite* shape (a plugin's `box`) owns its internal structure, so it is
+ *    never the user's to dissolve — checked first, because §4.4's example
+ *    `ungroup n1` is a *root-level* box and must report the composite message;
+ *  - a root-level container: the root level has no sibling slot to promote into,
+ *    and allowing it would silently flatten a whole diagram.
  */
 export class UngroupCommand extends AbstractEditCommand {
   static readonly usage = "ungroup <gid>";
@@ -35,6 +39,9 @@ export class UngroupCommand extends AbstractEditCommand {
     const group = this.context.shape(this.#id);
     if (!group.isContainer) {
       throw new EditorError(`not a container: ${this.#id}`);
+    }
+    if (group.isComposite) {
+      throw new EditorError(`cannot ungroup composite shape: ${this.#id}`);
     }
     const parent = group.parent;
     if (parent === null || parent === document) {

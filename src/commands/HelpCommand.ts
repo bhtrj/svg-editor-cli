@@ -18,11 +18,17 @@ const GROUPS: ReadonlyArray<{ readonly title: string; readonly names: readonly s
 export class HelpCommand implements CliCommand {
   static readonly usage = "help";
 
-  private constructor(private readonly registry: CommandRegistry) {}
+  private constructor(
+    private readonly registry: CommandRegistry,
+    private readonly types: readonly string[],
+  ) {}
 
   static fromArguments(args: Arguments, context: CommandContext): HelpCommand {
     args.expectEnd();
-    return new HelpCommand(context.registry);
+    return new HelpCommand(
+      context.registry,
+      context.factory.specs.map((spec) => spec.type),
+    );
   }
 
   execute(): readonly string[] {
@@ -40,7 +46,7 @@ export class HelpCommand implements CliCommand {
       "  '#' at the start of a line is a comment; quote arguments that contain spaces.",
       "  ids are unique and case-sensitive; every shape (including <g>) has one.",
       "  coordinates: origin top-left, x right, y down, unit px (floats allowed).",
-      "  create types: rect circle ellipse line text g",
+      `  create types: ${this.types.join(" ")}`,
     );
     return lines;
   }

@@ -84,7 +84,7 @@ export class SvgDecoder {
       values.set("content", SvgDecoder.#textContentOf(element));
     }
 
-    const shape = state.factory.createFromAttributes(element.tag, values);
+    const shape = SvgDecoder.#build(element, values, id, state);
 
     for (const [name, value] of element.attributes) {
       if (!MODELLED_ATTRIBUTES.has(name)) {
@@ -105,8 +105,28 @@ export class SvgDecoder {
     return shape;
   }
 
-  static #collectIds(elements: readonly RawSvgElement[], into: Set<string>): void {
-    for (const element of elements) {
+  /**
+   * A plugin composite is rebuilt from its `data-kind` marker (§4.4); every other
+   * element is built from its tag. When no loaded plugin claims the kind the
+   * marked `<g>` degrades to a plain container, structure intact.
+   */
+  static #build(
+    element: RawSvgElement,
+    values: ReadonlyMap<string, string>,
+    id: string,
+    state: DecodeState,
+  ): Shape {
+    const kind = element.attributes.get("data-kind");
+    if (kind !== undefined) {
+      const composite = state.factory.restoreComposite(kind, id);
+      if (composite !== null) {
+        return composite;
+      }
+    }
+    return state.factory.createFromAttributes(element.tag, values);
+  }
+
+  static #collectIds(elements: readonly RawSvgElement[], into: Set<string>): void {    for (const element of elements) {
       const id = element.attributes.get("id");
       if (id !== undefined && id !== "") {
         into.add(id);

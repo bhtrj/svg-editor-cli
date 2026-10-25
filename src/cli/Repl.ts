@@ -1,6 +1,6 @@
-import { createInterface } from "node:readline";
 import { EditorError } from "../shared/EditorError.js";
 import type { CommandRunner } from "../app/CommandRunner.js";
+import type { LineSource } from "./LineSource.js";
 
 /**
  * The REPL: reads one line, prints what the command produced, repeats.
@@ -29,19 +29,17 @@ export class Repl {
     }
   }
 
-  /** Interactive mode; resolves when stdin closes (Ctrl+D / Ctrl+Z). */
-  async start(input: NodeJS.ReadableStream, output: NodeJS.WritableStream, prompt = "svg> "): Promise<void> {
-    const rl = createInterface({ input, output, terminal: process.stdin.isTTY === true });
+  /** Interactive mode; resolves when the line source ends (Ctrl+D / Ctrl+Z). */
+  async start(source: LineSource): Promise<void> {
     this.write(Repl.BANNER);
     this.write("");
 
-    rl.setPrompt(prompt);
-    rl.prompt();
-    for await (const line of rl) {
+    source.prompt();
+    for await (const line of source.lines()) {
       for (const outputLine of this.runLine(line)) {
         this.write(outputLine);
       }
-      rl.prompt();
+      source.prompt();
     }
   }
 

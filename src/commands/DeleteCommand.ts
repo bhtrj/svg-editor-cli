@@ -35,7 +35,7 @@ export class DeleteCommand extends AbstractEditCommand {
   protected apply(): readonly string[] {
     const shape = this.context.shape(this.id);
     const parent = shape.parent;
-    this.#label = shape.label;
+    this.#label = shape.commandLabel;
     this.#wasContainer = shape.isContainer;
     this.#childCount = shape.descendantCount();
     this.#parentLabel = parent?.containerLabel ?? "svg";

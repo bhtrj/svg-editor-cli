@@ -42,7 +42,7 @@ export class MoveCommand extends AbstractEditCommand {
 
   protected apply(): readonly string[] {
     const shape = this.context.shape(this.id);
-    this.#label = shape.label;
+    this.#label = shape.commandLabel;
     this.#isContainer = shape.isContainer;
     if (!this.#isContainer) {
       this.#before = shape.anchor().label;

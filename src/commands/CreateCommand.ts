@@ -16,6 +16,7 @@ export class CreateCommand extends AbstractEditCommand {
   static readonly usage = CommandSyntax.usageOf("create");
 
   #label = "";
+  #creation = "";
   #parentLabel = "";
   #containerLabel: string | null = null;
 
@@ -95,9 +96,18 @@ export class CreateCommand extends AbstractEditCommand {
         : this.context.container(this.containerId);
 
     const shape = this.context.factory.create(this.type, this.values);
+
+    // A plugin composite derives part ids of its own (`n1-rect`, `n1-label`).
+    // §2's "unique id" rule covers them too, so a collision is reported before
+    // anything is inserted and the command still fails atomically.
+    for (const part of shape.descendants()) {
+      this.context.assertIdAvailable(part.id);
+    }
+
     parent.insertChildAt(parent.children.length, shape);
 
-    this.#label = shape.label;
+    this.#label = shape.commandLabel;
+    this.#creation = shape.creationFeedback();
     this.#parentLabel = parent.containerLabel;
     this.#containerLabel = this.containerId === null ? null : parent.containerLabel;
     return [this.createdMessage()];
@@ -113,7 +123,7 @@ export class CreateCommand extends AbstractEditCommand {
 
   private createdMessage(): string {
     return this.#containerLabel === null
-      ? `${this.#label} created`
-      : `${this.#label} created in ${this.#parentLabel}`;
+      ? this.#creation
+      : `${this.#creation} in ${this.#parentLabel}`;
   }
 }
