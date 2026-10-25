@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { BoxProvider } from "../src/domain/BoxProvider.js";
 import { TestEditor } from "./support/TestEditor.js";
 
 /**
@@ -195,7 +196,7 @@ describe("§6.1 two-node flowchart", () => {
   });
 });
 
-describe("§6.1 version B (box) — out of scope for this phase", () => {
+describe("§6.1 version B (box) — out of scope for this phase by default", () => {
   const block = blockWith("svg> create box n1", "svg> save flowchart-box.svg");
 
   it("rejects the plugin type with the documented message", () => {
@@ -210,6 +211,47 @@ describe("§6.1 version B (box) — out of scope for this phase", () => {
     ]);
     // `create line` still works (it is a kernel type); no box is ever created.
     expect(output.some((line) => line.startsWith("box#"))).toBe(false);
+  });
+
+  it("replays the whole session once `--plugin box` is loaded", () => {
+    const editor = new TestEditor([new BoxProvider()]);
+    editor.run("init 800 600");
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    const expected = expectedOutput(block);
+
+    // The commands *and* every non-tree line are byte-for-byte; the tree is
+    // compared by content (the brief's own tree blocks mix several padding
+    // widths, see §2.12 of doc/README.md).
+    expect(output.slice(0, output.indexOf("svg (800x600)"))).toEqual(
+      expected.slice(0, expected.indexOf("svg (800x600)")),
+    );
+    expect(withoutPadding(treeLines(output))).toEqual(withoutPadding(treeLines(expected)));
+  });
+
+  it("is rejected by default even for the box-only commands of the session", () => {
+    const editor = new TestEditor();
+    editor.run("init 800 600");
+    expect(editor.run('create box n1 120 100 160 60 "开始"')).toEqual([
+      "error: unknown shape type: box (is the plugin loaded?)",
+    ]);
+  });
+});
+
+describe("§4.4 composite type — the brief's own snippet, with the plugin", () => {
+  const block = blockWith("svg> create box n1", "svg> tree n1");
+
+  it("creates, prints the documented subtree and refuses ungroup", () => {
+    const editor = new TestEditor([new BoxProvider()]);
+    editor.run("init 800 600");
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    const expected = expectedOutput(block);
+
+    const treeStart = expected.indexOf("g#n1 (box)");
+    expect(output.slice(0, treeStart)).toEqual(expected.slice(0, treeStart));
+    expect(withoutPadding(output.slice(treeStart))).toEqual(
+      withoutPadding(expected.slice(treeStart)),
+    );
+    expect(editor.run("ungroup n1")).toEqual(["error: cannot ungroup composite shape: n1"]);
   });
 });
 

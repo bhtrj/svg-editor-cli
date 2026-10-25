@@ -1,11 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { Repl } from "../../src/cli/Repl.js";
+import type { LineSource } from "../../src/cli/LineSource.js";
 import { CommandRegistry } from "../../src/commands/CommandRegistry.js";
 import { ShapeFactory } from "../../src/domain/ShapeFactory.js";
 import { SvgCodec } from "../../src/io/SvgCodec.js";
 import { EditorSession } from "../../src/app/EditorSession.js";
 import { CommandRunner } from "../../src/app/CommandRunner.js";
 import { FakeFileGateway } from "../support/TestEditor.js";
+
+/** A scripted line source: covers the interactive loop without a terminal. */
+class StubLineSource implements LineSource {
+  #prompts = 0;
+
+  constructor(private readonly script: readonly string[]) {}
+
+  prompt(): void {
+    this.#prompts += 1;
+  }
+
+  async *lines(): AsyncIterable<string> {
+    for (const line of this.script) {
+      yield line;
+    }
+  }
+
+  get prompts(): number {
+    return this.#prompts;
+  }
+}
 
 /** Builds the real REPL around an in-memory file system. */
 function makeRepl(): { repl: Repl; files: FakeFileGateway; printed: string[] } {
@@ -72,5 +94,44 @@ describe("Repl.replay", () => {
 describe("banner", () => {
   it("matches the documented start-up line", () => {
     expect(Repl.BANNER).toBe("svg-editor 0.1 — type 'help' for commands");
+  });
+});
+
+describe("Repl.start (interactive loop)", () => {
+  it("prints the banner, then one prompt before each line and after the last", async () => {
+    const { repl, printed } = makeRepl();
+    const source = new StubLineSource(["init 10 10", "create rect r1 0 0 1 1", "tree"]);
+
+    await repl.start(source);
+
+    expect(printed).toEqual([
+      Repl.BANNER,
+      "",
+      "canvas 10x10 created",
+      "rect#r1 created",
+      "svg (10x10)",
+      "└── rect#r1  x=0 y=0 w=1 h=1",
+    ]);
+    expect(source.prompts).toBe(4);
+  });
+
+  it("keeps going after a failing line, in a terminal as in a script", async () => {
+    const { repl, printed } = makeRepl();
+    const source = new StubLineSource(["init", "move r9 1 1", "create rect r1 0 0 1 1", ""]);
+
+    await repl.start(source);
+
+    expect(printed).toContain("error: no such shape: r9");
+    expect(printed).toContain("rect#r1 created");
+  });
+
+  it("runs a line at a time, so state carries across prompts", async () => {
+    const { repl, printed, files } = makeRepl();
+    const source = new StubLineSource(["init", "create rect r1 0 0 1 1", "save out.svg"]);
+
+    await repl.start(source);
+
+    expect(files.files.has("out.svg")).toBe(true);
+    expect(printed.at(-1)).toBe("saved to out.svg (1 elements)");
   });
 });

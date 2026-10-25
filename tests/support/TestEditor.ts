@@ -1,5 +1,6 @@
-﻿import { CommandRegistry } from "../../src/commands/CommandRegistry.js";
+import { CommandRegistry } from "../../src/commands/CommandRegistry.js";
 import { ShapeFactory } from "../../src/domain/ShapeFactory.js";
+import type { ShapeProvider } from "../../src/domain/ShapeProvider.js";
 import { SvgCodec } from "../../src/io/SvgCodec.js";
 import { EditorSession } from "../../src/app/EditorSession.js";
 import { CommandRunner } from "../../src/app/CommandRunner.js";
@@ -33,9 +34,9 @@ export class TestEditor {
   readonly runner: CommandRunner;
   readonly files = new FakeFileGateway();
 
-  constructor() {
+  constructor(providers: readonly ShapeProvider[] = []) {
     this.session = new EditorSession({
-      factory: new ShapeFactory(),
+      factory: new ShapeFactory(providers),
       codec: new SvgCodec(),
       files: this.files,
       registry: new CommandRegistry(),
@@ -71,8 +72,12 @@ export class TestEditor {
 }
 
 /** Builds an editor with a document already initialised. */
-export function editorWithCanvas(width = 800, height = 600): TestEditor {
-  const editor = new TestEditor();
+export function editorWithCanvas(
+  width = 800,
+  height = 600,
+  providers: readonly ShapeProvider[] = [],
+): TestEditor {
+  const editor = new TestEditor(providers);
   editor.run(`init ${width} ${height}`);
   return editor;
 }
