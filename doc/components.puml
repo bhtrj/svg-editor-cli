@@ -1,0 +1,80 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+title SVG 编辑器 CLI — 模块与依赖方向
+
+package "cli（最外层）" {
+  [Repl]
+  [main / composition root]
+}
+
+package "app（用例编排）" {
+  [CommandRunner]
+  [EditorSession]
+}
+
+package "commands（Command 模式）" {
+  [CommandRegistry]
+  [CommandHistory]
+  [18 个 *Command 类]
+}
+
+package "domain（核心，零依赖）" {
+  [Shape]
+  [Group\n«Composite»]
+  [Rect / Circle /\nEllipse / Line / Text]
+  [SvgDocument]
+  [ShapeFactory]
+  [DocumentMemento]
+}
+
+package "io（格式与文件）" {
+  [SvgCodec]
+  [SvgDecoder / SvgEncoder]
+  [SvgXmlReader]
+  [NodeFileGateway]
+}
+
+package "presentation（文本视图）" {
+  [TreeRenderer]
+  [ShowRenderer]
+}
+
+package "shared（端口与基建）" {
+  [EditorError]
+  [Tokenizer / Arguments]
+  [FileGateway «port»]
+  [DocumentCodec «port»]
+}
+
+main / composition root --> Repl
+main / composition root --> EditorSession
+main / composition root --> SvgCodec
+main / composition root --> NodeFileGateway
+Repl --> CommandRunner
+CommandRunner --> CommandRegistry
+CommandRunner --> CommandHistory
+CommandRunner --> EditorSession
+EditorSession ..|> CommandContext
+18 个 *Command 类 --> Shape
+18 个 *Command 类 --> CommandHistory
+SvgCodec ..|> DocumentCodec
+NodeFileGateway ..|> FileGateway
+SvgDecoder --> ShapeFactory
+TreeRenderer --> Shape
+ShowRenderer --> Shape
+Group --> Shape
+SvgDocument --> Shape
+
+note right of commands
+  依赖方向：commands 只依赖 domain 与端口，
+  不 import io / app / cli —— 因此图中
+  commands 与 io 之间没有箭头。
+end note
+
+note bottom of domain
+  domain 不依赖任何上层模块；
+  这是整个架构的依赖汇点。
+end note
+
+@enduml

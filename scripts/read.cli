@@ -1,0 +1,19 @@
+# 从外部文件读入：缺 id 的元素会被自动命名并打印警告
+#   npx tsx src/cli/main.ts --script scripts/read.cli
+#
+# examples/other.svg 里第一个 <rect> 没有 id，读入后变成 rect1，
+# 其余元素保留文件中的 id。读入之后 undo/redo 被禁用，直到下一次编辑。
+
+read examples/other.svg
+tree
+
+# 读入后的图形与手工创建的图形没有区别：
+# 可以移动、可以改属性，也可以再存回去
+move c1 10 0
+set e1 fill #ffcc00
+
+# 无参数 save 会写回读入时的路径
+save examples/other-roundtrip.svg
+
+# undo 已因 io 命令失效
+undo

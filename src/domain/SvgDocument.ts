@@ -1,6 +1,5 @@
 import { EditorError } from "../shared/EditorError.js";
 import { formatNumber } from "../shared/Numbers.js";
-import { Group } from "./Group.js";
 import type { Shape } from "./Shape.js";
 import type { ShapeContainer } from "./ShapeContainer.js";
 import type { SvgElementNode } from "./SvgElementNode.js";
@@ -135,12 +134,6 @@ export class SvgDocument implements ShapeContainer {
   /** Detached deep copy of the tree, for mementos. */
   snapshotChildren(): Shape[] {
     return this.#children.map((child) => child.clone());
-  }
-
-  /** Top-level `g` by id, or `undefined` — used by the `ungroup` rule. */
-  topLevelGroup(id: string): Group | undefined {
-    const shape = this.#children.find((child) => child.id === id);
-    return shape instanceof Group ? shape : undefined;
   }
 
   toSvgElement(): SvgElementNode {
