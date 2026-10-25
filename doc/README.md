@@ -11,42 +11,50 @@
 
 ```text
 src/
-├── shared/         零业务知识的基础设施：错误类型、数字格式化、XML 转义、分词、参数游标、文件端口
-├── domain/         图形模型（本项目的核心，不依赖任何人）
+├── shared/         零业务知识的机械功能（每项一个静态工具类）：
+│                   EditorError、Numbers、Xml、Tokenizer/Token、Arguments、FileGateway 端口
+├── domain/         图形模型（本项目的核心，只依赖 shared）
 │   ├── Shape        抽象基类：id、绘制属性、父链接、set 白名单、moveBy/scaleBy
 │   ├── Group        Composite：既是 Shape 又是容器
 │   ├── Rect / Circle / Ellipse / Line / Text   五个叶子
 │   ├── SvgDocument  文档根，实现 ShapeContainer 但可寻址性为零
 │   ├── ShapeFactory 类型名 → 类的唯一分派点
 │   └── DocumentMemento  undo 快照
-├── commands/        每条命令一个类（Command 模式），含 undo/redo；CommandRegistry 是第二个分派点
+├── commands/        每条命令**一个类一个文件**（Command 模式），含 undo/redo；
+│                   CommandRegistry 是第二个（也是最后一个）分派点
+├── presentation/    tree / show 的文本渲染（TreeRenderer / TreeRow / ShowRenderer）
 ├── io/              SVG 解析 / 序列化 / node:fs 适配器（唯一接触文件系统的地方）
 ├── app/             用例编排：EditorSession（文档与 id 解析）、CommandRunner（跨命令规则）
-├── cli/             REPL 与进程入口（组合根）
-└── presentation/    tree / show 的文本渲染
+└── cli/             REPL、组合根（CompositionRoot）与进程入口（main）
 ```
+
+**一类一文件**不是口号：`tests/architecture/Architecture.test.ts` 会扫描 `src/`，断言每个文件至多声明一个类、
+且文件名等于类名（`main.ts` 是唯一豁免——它是 bin 入口，不声明类）。
 
 每个模块的职责，以及它**为什么存在**（而不是被合并到邻居里）：
 
-| 模块 | 职责 | 单独存在的理由 |
-|---|---|---|
-| `shared` | 与业务无关的机械功能 | 这些功能被上下三层共用；放进任一层都会制造反向依赖 |
-| `domain` | 图形是什么、能做什么（几何、层级、属性白名单、序列化形状） | 全项目的依赖汇点；必须能在没有 fs / 没有 console 的情况下被测试与复用 |
-| `commands` | 用户意图是什么，以及如何撤销 | undo/redo 是**变更语义**，不是模型状态；放进 domain 会让模型背负编辑历史 |
-| `io` | 字节 ↔ 模型 | 文件格式是外部关注点，将来可能增加 JSON / 其他方言 |
-| `app` | 一次会话的生命周期与跨命令规则 | “哪条命令要进 undo 栈”“io 之后锁 history”不属于任何单条命令 |
-| `cli` | 输入输出与进程边界 | 是唯一允许 `console` / `process` / `error:` 前缀的地方 |
-| `presentation` | 文本视图 | `tree` 的列对齐是展示逻辑；放进 domain 会把 `padEnd` 写进模型 |
+| 模块 | 文件数 | 职责 | 单独存在的理由 |
+|---|---|---|---|
+| `shared` | 7 | 与业务无关的机械功能 | 这些功能被上下三层共用；放进任一层都会制造反向依赖 |
+| `domain` | 18 | 图形是什么、能做什么（几何、层级、属性白名单、序列化形状） | 全项目的依赖汇点；必须能在没有 fs / 没有 console 的情况下被测试与复用 |
+| `commands` | 25 | 用户意图是什么，以及如何撤销 | undo/redo 是**变更语义**，不是模型状态；放进 domain 会让模型背负编辑历史 |
+| `presentation` | 3 | 文本视图（`tree` / `show`） | 渲染只依赖模型；放进 `commands` 会让展示逻辑与命令解析混在一起 |
+| `io` | 7 | 字节 ↔ 模型 | 文件格式是外部关注点，将来可能增加 JSON / 其他方言 |
+| `app` | 2 | 一次会话的生命周期与跨命令规则 | “哪条命令要进 undo 栈”“io 之后锁 history”不属于任何单条命令 |
+| `cli` | 3 | 输入输出与进程边界（REPL + 组合根 + bin 入口） | 是唯一允许 `process` / `stdout` / `error:` 前缀的地方 |
 
-同一张图的 PlantUML 组件图（源文件见 `doc/components.puml`）：
+每个模块的完整目录树见上一节；表里的文件数可由 `Get-ChildItem src\<module>` 逐个核对。
+
+同一张图的 PlantUML 组件图（源文件见 `doc/components.puml`，可渲染版本以该文件为准）：
 
 ```plantuml
 @startuml
 skinparam componentStyle rectangle
 
 package "cli" {
+  [main (bin 入口)]
+  [CompositionRoot 组合根]
   [Repl]
-  [main (composition root)]
 }
 package "app" {
   [CommandRunner]
@@ -54,12 +62,18 @@ package "app" {
 }
 package "commands" {
   [CommandRegistry]
-  [*Command 类 ×18]
+  [命令类 ×19（一类一文件）]
   [CommandHistory]
+  [CommandSyntax]
+}
+package "presentation" {
+  [TreeRenderer]
+  [TreeRow]
+  [ShowRenderer]
 }
 package "domain" {
   [Shape]
-  [Group]
+  [Group «Composite»]
   [Rect/Circle/Ellipse/Line/Text]
   [SvgDocument]
   [ShapeFactory]
@@ -71,30 +85,29 @@ package "io" {
   [SvgXmlReader]
   [NodeFileGateway]
 }
-package "presentation" {
-  [TreeRenderer]
-  [ShowRenderer]
-}
 package "shared" {
   [EditorError]
-  [Tokenizer / Arguments]
-  [FileGateway 端口]
-  [DocumentCodec 端口]
+  [Numbers / Xml / Tokenizer / Arguments]
+  [FileGateway «port»]
+  [DocumentCodec «port»]
 }
 
-[main (composition root)] --> [Repl]
-[main (composition root)] --> [EditorSession]
-[main (composition root)] --> [SvgCodec]
-[main (composition root)] --> [NodeFileGateway]
+[main (bin 入口)] --> [CompositionRoot 组合根]
+[CompositionRoot 组合根] --> [Repl]
+[CompositionRoot 组合根] --> [EditorSession]
+[CompositionRoot 组合根] --> [SvgCodec]
+[CompositionRoot 组合根] --> [NodeFileGateway]
 [Repl] --> [CommandRunner]
 [CommandRunner] --> [CommandRegistry]
 [CommandRunner] --> [CommandHistory]
 [CommandRunner] --> [EditorSession]
-[EditorSession] ..> [CommandContext] : implements
-[*Command 类 ×18] --> [Shape]
-[*Command 类 ×18] --> [DocumentMemento]
-[SvgCodec] ..|> [DocumentCodec 端口]
-[NodeFileGateway] ..|> [FileGateway 端口]
+[EditorSession] ..> [CommandContext]
+[命令类 ×19（一类一文件）] --> [Shape]
+[命令类 ×19（一类一文件）] --> [CommandHistory]
+[命令类 ×19（一类一文件）] --> [TreeRenderer]
+[CommandRegistry] --> [CommandSyntax]
+[SvgCodec] ..|> [DocumentCodec «port»]
+[NodeFileGateway] ..|> [FileGateway «port»]
 [SvgDecoder] --> [ShapeFactory]
 [TreeRenderer] --> [Shape]
 [ShowRenderer] --> [Shape]
@@ -109,7 +122,7 @@ package "shared" {
 #### Command（题目要求，必须使用）
 
 - **接口**：`src/commands/Command.ts` 定义 `CliCommand { execute() }` 与 `UndoableCommand extends CliCommand { undo(); redo(); }`。
-- **落地**：18 个命令各占一个类一个文件（`CreateCommand`、`MoveCommand`、`GroupCommand`…），每个类自己解析参数、自己执行、自己生成成功回显与 undo/redo 回显。
+- **落地**：19 个命令各占一个类一个文件（`CreateCommand`、`MoveCommand`、`GroupCommand`…），每个类自己解析参数、自己执行、自己生成成功回显与 undo/redo 回显。
 - **收益**：`group g1 c1 box t1` 天然是**一个** undo 单元——因为它就是**一个对象**，无需“合并事务”的机制。
 - **反例规避**：没有 `EditorSession.execute(name, args)` 里的巨型 switch；命令对象由 `CommandRegistry` 构造，会话只拿到 `CliCommand` 接口。
 
@@ -153,29 +166,34 @@ package "shared" {
 
 ### 1.3 依赖方向规则
 
-**允许的依赖（箭头表示“可以 import”）**：
+**允许的依赖（箭头表示“可以 import”，越靠右越底层）**：
 
 ```text
-cli  →  app  →  commands  →  domain
- │       │         │           ↑
- │       │         └───────────┤
- │       └─────────────────────┤
- └──→  io  ────────────────────┘
-        ↑
-     shared  ←（所有层都可以依赖）
+                  shared   ← 所有模块都可以依赖（零业务知识）
+                    ↑
+                  domain   ← 模型，只认识 shared
+                    ↑
+              presentation ← 文本视图，只认识模型
+                 ↑   ↑
+        commands ─┘   └─ io   （两者互不认识）
+             ↑          ↑
+             └── app ───┘      ← 唯一同时认识命令与适配器的地方
+                    ↑
+                  cli          ← 最外层：REPL + 组合根 + bin 入口
 ```
 
 | 规则 | 理由 |
 |---|---|
-| `domain` **不依赖任何模块**（除 `shared`） | 它是依赖汇点。一旦 domain 认识 fs 或命令名，模型就无法在没有 IO 的情况下测试，也无法被第二阶段（GUI）复用 |
-| `commands` 可以依赖 `domain`，**不可**依赖 `io` / `app` / `cli` | 命令需要改模型；但“文件怎么读写”“会话怎么持有文档”是外部细节，通过 `CommandContext` / `DocumentCodec` / `FileGateway` 三个端口注入 |
-| `io` 可以依赖 `domain`，**不可**依赖 `commands` / `cli` | 编解码器需要构造模型对象；它不该知道有哪些命令 |
-| `app` 可以依赖 `commands` + `domain` + `io` | 它是编排层：唯一允许“同时认识命令和适配器”的地方（但仍然通过接口） |
+| `domain` **只依赖 `shared`** | 它是依赖汇点。一旦 domain 认识 fs 或命令名，模型就无法在没有 IO 的情况下测试，也无法被第二阶段（GUI）复用 |
+| `presentation` 只依赖 `domain` | 渲染器读模型，不知道命令存在。它位于 commands 之下的原因是：它没有行为副作用，纯函数式地把模型变成文本 |
+| `commands` 可以依赖 `domain` + `presentation`，**不可**依赖 `io` / `app` / `cli` | 命令需要改模型、也需要渲染 `tree`/`show`；但“文件怎么读写”“会话怎么持有文档”是外部细节，通过 `CommandContext` / `DocumentCodec` / `FileGateway` 三个端口注入 |
+| `io` 可以依赖 `domain` + `presentation`，**不可**依赖 `commands` / `cli` | 编解码器需要构造模型对象；它不该知道有哪些命令 |
+| `app` 可以依赖 `commands` + `domain` + `io` + `presentation` | 它是编排层：唯一允许“同时认识命令和适配器”的地方（但仍然通过接口） |
 | `cli` 只依赖 `app`（与组合根需要的 `io`） | CLI 是**最外层**；它把异常翻译成 `error:` 行，不做业务判断 |
-| `presentation` 只依赖 `domain` | 渲染器读模型，不知道命令存在 |
 | 任何模块**不得**依赖 `cli` | 否则无法在测试里驱动会话 |
 
-**违规即待处理项**：一致性自查第 1 条给出实际检查结果。检查手段是一条可重复执行的命令（见 §4.3），而不是“我觉得没问题”。
+**规则是被测试执行的，不是被描述的**：`tests/architecture/Architecture.test.ts` 会解析每个文件的 import，
+按上表逐条断言方向；任何一条反向依赖都会让 `npm test` 变红。这就是为什么 §3.2 的“自查”不再依赖人工 grep。
 
 ### 1.4 变化点假设
 
@@ -223,7 +241,7 @@ cli  →  app  →  commands  →  domain
 
 **留了什么**：`presentation` 层的两个渲染器；命令返回的是 `readonly string[]` 而**不是**直接写 stdout，所以将来可以让同一个命令返回结构化对象给 GUI。
 
-**没有留的**：把返回值抽象成 `Result` 对象。REPL 只需要字符串；提前抽象会迫使 18 个命令都改签名，收益为零。
+**没有留的**：把返回值抽象成 `Result` 对象。REPL 只需要字符串；提前抽象会迫使 19 个命令都改签名，收益为零。
 
 #### ⑥ 命令语法会变（新增子命令、可选参数、批量操作）
 
@@ -322,94 +340,152 @@ cli  →  app  →  commands  →  domain
 
 **结果**：两份 transcript 的每一行（包括 `├──`/`└──`/`│` 前缀与空格对齐）都与题目一致。这条测试后来成了整个项目最有价值的一条：任何改动只要破坏输出格式，它立刻红。
 
+### 2.8 范式层违规：一个文件塞了多个类
+
+**AI 第一版**：把“关系紧密”的命令合并在一个文件里——`DisplayCommands.ts` 装了 `TreeCommand` / `ShowCommand` / `UndoCommand` / `RedoCommand`，`DocumentCommands.ts` 装 2 个，`FileCommands.ts` 装 2 个，`ZOrderCommands.ts` 装 2 个，`TreeRenderer.ts` 还额外装了 `TreeRow`。
+
+**问题**：题目 §2.1 的第一条硬规则就是“一类一文件（文件名 = 类名）”。上面这 5 个文件全部违规。这类违规**功能上完全正确**，所以任何行为测试都不会失败——只有把规则本身写成测试才抓得到。
+
+**怎么发现**：在核对“命令覆盖自查表”时顺手数了 `export class` 的出现次数，才发现文件名与类名对不上。
+
+**修正**：
+1. 拆成 `TreeCommand.ts` / `ShowCommand.ts` / `UndoCommand.ts` / `RedoCommand.ts` / `InitCommand.ts` / `CanvasCommand.ts` / `ReadCommand.ts` / `SaveCommand.ts` / `FrontCommand.ts` / `BackCommand.ts` / `TreeRow.ts`，删除 4 个合并文件；
+2. 新增 `tests/architecture/Architecture.test.ts`，把“至多一个类”“文件名 = 类名”变成断言（`main.ts` 作为 bin 入口豁免）。
+
+### 2.9 范式层违规：过程式自由函数
+
+**AI 第一版**：把大量辅助逻辑写成模块级 `function`：
+
+| 位置 | 函数 |
+|---|---|
+| `shared/Numbers.ts` | `formatNumber` / `parseNumber` / `parsePositiveNumber` |
+| `shared/Xml.ts` | `escapeXmlText` / `escapeXmlAttribute` |
+| `shared/Tokenizer.ts` | `tokenize` / `isIgnorableLine` / `describeTokens` |
+| `commands/CommandSyntax.ts` | `usageOf` |
+| `commands/GroupCommand.ts` | `sortMembers` |
+| `commands/DeleteCommand.ts` | `countDescendants` |
+| `commands/SetAttributeCommand.ts` | `quoteIfText` |
+| `domain/Shape.ts` | `parseNumeric` |
+| `io/SvgXmlReader.ts`、`io/SvgDecoder.ts` | 10 个解析辅助函数 |
+| `app/CommandRunner.ts` | `isUndoable` |
+| `cli/main.ts` | `isEntryPoint` |
+
+**问题**：题目 §2.1 明令“**禁止**…过程式自由函数”。更要紧的是其中两个确实带着**领域知识**：`sortMembers`（文档顺序）和 `countDescendants`（子树规模）——它们本该是模型的能力。
+
+**怎么发现**：用 `Select-String '^export function |^function '` 全量列了一遍。
+
+**修正**：分三种情况处理，而不是一刀切：
+1. **带领域知识的**回到模型：`SvgDocument.sortInDocumentOrder(shapes)`（`group` 保持成员相对顺序）、`Shape.descendantCount()`（`delete` 报告子树规模）、`Shape.parseNumeric` 转为私有静态方法；
+2. **无状态工具**变成以文件命名的静态工具类：`Numbers` / `Xml` / `Tokenizer`（`Token` 接口独立成 `Token.ts`）/ `CommandSyntax`；
+3. **纯内部辅助**变成私有静态方法：`SvgDecoder`、`SvgXmlReader`、`CommandRunner.isUndoable`、`SetAttributeCommand.quoteIfText`、`CompositionRoot.#scriptPath`。
+
+顺带删掉三处**死代码**（无调用者）：`DocumentOrder.ts` 整个文件、`ShapeContainer.detach`、`Tokenizer.describeTokens`、`Numbers.parsePositiveNumber` 的旧形态。
+
+### 2.10 重构引入的回归：`--script` 静默退出
+
+**AI 第一版**：把组合根从 `main.ts` 抽成 `CompositionRoot` 后，入口自检写成
+`resolve(process.argv[1]) === fileURLToPath(import.meta.url)`。
+
+**问题**：`import.meta.url` 在模块化之后指向 **`CompositionRoot.ts`**，而 `argv[1]` 是 **`main.ts`**——两者永不相等，于是 `start()` 直接返回。表现是：`npm run demo` **完全没有输出，退出码却是 0**。这是最阴险的一类回归（无报错、无输出、成功退出）。
+
+**怎么发现**：重构后跑 `npm run demo` 做端到端验证，发现 stdout 为空。若只看 `npm test`（116 条全绿）就会漏掉——因为测试直接构造 `Repl`/`Session`，不走进程入口。
+
+**修正**：删掉这个脆弱的自检。入口文件本来就**没有**任何模块 import 它（测试用 `CompositionRoot`），所以 `main.ts` 顶层无条件调用 `CompositionRoot.start()` 即可；同时补了 `tests/cli/CompositionRoot.test.ts`，用临时目录 + `--script` 真正走一遍组合根（含“脚本不存在 → 退出码 1 + stderr 一行错误”），把这条路径纳入 CI。
+
+### 2.11 我写的架构测试反过来纠正了我的文档
+
+**背景**：`Architecture.test.ts` 第一次运行报了两条违规。一条是误报（`Shape.ts` 的**注释**里提到 `instanceof Group`，被正则命中），另一条是**真问题**：`TreeCommand` / `ShowCommand` 依赖 `presentation`，而我在测试里写的允许表（照抄文档）不允许。
+
+**判定**：文档 §1.3 的原文只禁止 `commands → io/app/cli`，并未禁止 `commands → presentation`；是**测试**把规则写得比文档更严。真正的缺陷是文档没有把 `presentation` 放进层次图，导致“命令怎么渲染文字”没有交代。
+
+**修正**：
+1. 测试改为“忽略注释”，避免文档字符串触发规则；
+2. 把 `presentation` 明确画进层次（在 `domain` 之上、`commands`/`io` 之下），文档 §1.3 表格与 PlantUML 同步更新，并写明理由（渲染无副作用、不进 `commands` 以免展示逻辑与命令解析混合）。
+
+**这件事的价值**：它把“文档说的”和“代码做的”强制对齐——如果我只写散文，这个不一致会一直留在提交里。
+
 ---
 
 ## 3. 一致性自查
 
 ### 3.1 模块划分：实际目录与方案是否一致？
 
-**结论：一致（含 2 处已在设计阶段合并/命名的偏离，均无遗留待处理项）。**
+**结论：一致；方案在第 1 轮实现后按实际结构更新过一次，本轮重构又更新过一次，没有未记录的不一致。**
 
-| 方案中的模块 | 实际目录 | 状态 |
-|---|---|---|
-| `domain`（Shape/Group/叶子/Canvas/Factory/Memento） | `src/domain/` 14 个文件 | 一致 |
-| `commands`（Command + History + Registry） | `src/commands/` 20 个文件 | 一致 |
-| `io`（Reader/Writer/Codec/FileStore） | `src/io/` 5 个文件 | 一致（`FileStore` 命名为 `NodeFileGateway`，端口叫 `FileGateway`） |
-| `app`（EditorSession + 工厂装配） | `src/app/` 2 个文件 | 一致；工厂按方案放在 `domain`（它构造领域对象，属于领域知识） |
-| `cli`（REPL/Tokenizer/Parser/Presenter） | `src/cli/` 2 个 + `src/presentation/` 2 个 + `src/shared/Tokenizer.ts` | **偏离**：见下 |
-| `shared` | `src/shared/` 6 个文件 | 方案里没有单列，实施时抽出 |
+| 方案中的模块 | 实际目录 | 文件数 | 状态 |
+|---|---|---|---|
+| `shared` | `src/shared/` | 7 | 与 §1.1 一致 |
+| `domain`（Shape/Group/叶子/SvgDocument/Factory/Memento） | `src/domain/` | 18 | 一致 |
+| `commands`（命令类 + History + Registry + Syntax） | `src/commands/` | 25 | 一致（本轮由 20 → 25：拆出 11 个单类文件、删除 4 个合并文件） |
+| `presentation`（Renderer + TreeRow） | `src/presentation/` | 3 | 一致 |
+| `io`（Reader/Decoder/Encoder/Codec/Gateway + 2 个 Raw 类型） | `src/io/` | 7 | 一致（`FileStore` 命名为 `NodeFileGateway`，端口叫 `FileGateway`） |
+| `app`（EditorSession + CommandRunner） | `src/app/` | 2 | 一致；工厂按方案放在 `domain`（它构造领域对象，属于领域知识） |
+| `cli`（REPL + 组合根 + bin 入口） | `src/cli/` | 3 | 一致 |
 
-**偏离说明（已记入修订记录）**：
-1. **`presentation` 从 `cli` 中拆出**：方案里 `Presenter` 在 `cli` 下。实施时发现渲染器只依赖 `domain`，若留在 `cli` 会让“展示逻辑”与“进程/IO”耦合，因此独立成层。依赖方向未变（仍只依赖 `domain`）。
-2. **分词与参数游标放进 `shared`**：它们被 `cli`（解析命令行）与 `commands`（`Arguments`）共用。若留在 `cli`，`commands` 就必须依赖 `cli`——直接违反依赖方向规则，所以必须上移。
-
-方案文档的“模块划分”一节已按实际结构更新（见 §1.1 的目录树），因此**没有未记录的不一致**。
+**两条与“最初草图”不同的决定（保留在记录里）**：
+1. **`presentation` 独立成层**，且允许被 `commands` / `io` 依赖：渲染器只读模型，不产生副作用；放进 `cli` 会让展示逻辑与进程生命周期纠缠，放进 `commands` 会让 `show`/`tree` 的实现细节混进命令解析。
+2. **分词与参数游标放进 `shared`**：它们被 `cli`（读一行）与 `commands`（`Arguments`）共用；若留在 `cli`，`commands` 就必须依赖 `cli`，直接违反依赖方向。
 
 ### 3.2 依赖方向：方案里的规则有没有被违反？
 
-**结论：无违反。** 以下是可复核的全量检查，而不是抽样。
+**结论：无违反——而且不是靠人工检查，是靠 11 条架构测试。**
 
-#### 检查 1：`domain` 是否 import 了上层
+`tests/architecture/Architecture.test.ts` 在每次 `npm test` 时执行：它遍历 `src/` 的每个 `.ts`，剥离注释后断言：
 
-```bash
-# 期望：无输出（domain 只允许 import 自己和 shared）
-grep -rnE "from \"\.\./(commands|app|io|cli|presentation)/" src/domain/
+| 测试 | 断言 | 对应规则 |
+|---|---|---|
+| `at most one class per file` | 每文件至多 1 个 `class` | §2.1 一类一文件 |
+| `names each file after its class` | 文件名 === 类名 | §2.1 |
+| `no top-level function` | `src/` 内除 `main.ts` 外无 `function` 声明 | §2.1 禁止过程式自由函数 |
+| `switch only in ShapeFactory` | `switch (` 只出现在 `ShapeFactory.ts` | §2.1 分派只允许两处 |
+| `never asks a shape for its class` | 无 `instanceof Rect/Circle/…` | Composite 多态 |
+| `every module import points inwards` | 按 §1.3 的允许表逐条校验 import 方向 | §1.3 |
+| `node:fs only in NodeFileGateway` | 文件系统只在适配器里 | IO 隔离 |
+| `domain free of fs/terminal` | `domain` 不 import `node:fs` 等 | 模型可测试性 |
+| `model free of command objects` | `domain` 不含 `*Command` 类 | 分层 |
+| `uses no any` | 无 `: any` | 类型纪律 |
+| `geometry stays in cells` | `Shape` 以 `geometry()` + `NumericAttribute` 暴露几何 | 非贫血模型 |
+
+其中“命令分发”那一处（`CommandRegistry` 的 `Map<string, Builder>`）无法用正则优雅断言——它由 §3.3 的覆盖自查表人工核对，且 `help` 会打印全部命令，漏注册会立刻被发现。
+
+#### 附：人工复核命令（与上表等价，便于快速确认）
+
+若不想跑测试，下面几条命令可在几秒内复现同样的结论（PowerShell 写法）：
+
+```powershell
+# 1. domain 是否 import 了上层？期望：无输出
+Select-String -Path src\domain\*.ts -Pattern 'from "\.\./(commands|app|io|cli|presentation)/'
+
+# 2. commands 是否 import 了 io / app / cli？期望：无输出
+Select-String -Path src\commands\*.ts -Pattern 'from "\.\./(io|app|cli)/'
+
+# 3. io 是否 import 了上层？期望：无输出
+Select-String -Path src\io\*.ts -Pattern 'from "\.\./(commands|cli|app|presentation)/'
+
+# 4. node:fs 只出现在 NodeFileGateway？期望：只命中 src\io\NodeFileGateway.ts
+Select-String -Path src\*\*.ts -Pattern 'from "node:fs"'
+
+# 5. switch 只出现在 ShapeFactory？期望：只命中 ShapeFactory.ts
+Select-String -Path src\*\*.ts -Pattern "\bswitch \("
+
+# 6. 是否有人判断图形类型？期望：无输出
+Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Text|Group)"
 ```
 
-**实际**：无输出。
-
-#### 检查 2：`commands` 是否 import 了 `io` / `app` / `cli`
-
-```bash
-grep -rnE "from \"\.\./(io|app|cli)/" src/commands/
-```
-
-**实际**：无输出。`read`/`save` 通过 `CommandContext.codec` / `.files` 拿到端口实现。
-
-#### 检查 3：`io` 是否 import 了 `commands` / `cli`
-
-```bash
-grep -rnE "from \"\.\./(commands|cli|app)/" src/io/
-```
-
-**实际**：无输出。
-
-#### 检查 4：`node:fs` 只出现在 `NodeFileGateway`
-
-```bash
-grep -rn "node:fs" src/ | grep -v "src/io/NodeFileGateway.ts"
-```
-
-**实际**：`src/cli/main.ts` 用 `node:fs` 读 `--script` 文件。**判定：可接受，但需说明**——组合根读脚本是启动参数处理，不是编辑器的文件语义（编辑器的文件语义在 `read`/`save`，走 `FileGateway` 端口）。已在 §1.3 的规则里注明“组合根额外依赖 `io`”。
-
-#### 检查 5：`presentation` 只依赖 `domain`
-
-```bash
-grep -rn "from \"\.\./" src/presentation/
-```
-
-**实际**：只 import `../domain/Shape.js` 与 `../domain/SvgDocument.js`（类型）。
-
-#### 检查 6：按名分派只有两处
-
-```bash
-grep -rnE "switch \(|\.typeName ===|instanceof (Rect|Circle|Ellipse|Line|Text)" src/
-```
-
-**实际**：`src/domain/ShapeFactory.ts` 有 `switch (type)`（工厂，允许）；`src/commands/CommandRegistry.ts` 是 `Map<string, Builder>`（注册表，允许）。其余无输出。
-
-> 说明：`SvgDocument` 早期版本曾用 `instanceof Group` 判断顶层容器，实施中改为 `Shape.asContainer()` 多态调用，已消除该类型判断（这也是为什么 `Shape` 上有 `asContainer()` 这个钩子）。
+**全部 6 条的实际结果均与期望一致**：1–3 无输出；4 只命中 `NodeFileGateway.ts`；5 只命中 `ShapeFactory.ts`；
+6 只命中 `Shape.ts:71` 的**注释**（那行注释本身在解释为什么不需要 `instanceof`——架构测试会先剥离注释再判断，所以这条注释不会让它变红）。
+（本轮重构前 `main.ts` 还额外用过 `node:fs` 读 `--script`，现在脚本读写也走 `FileGateway`，这条例外已经消失。）
 
 ### 3.3 命令覆盖自查
 
-对照题目 §3 的命令总表逐条核对（`tests/` 中均有对应用例）：
+对照题目 §3 的命令总表逐条核对（`tests/` 中均有对应用例）。注意每个命令都对应**一个同名文件**：
 
-| 命令 | 实现 | 测试 |
+| 命令 | 实现（一类一文件） | 测试 |
 |---|---|---|
-| `init [w] [h]` | `DocumentCommands.ts` | `DocumentCommands.test.ts` |
-| `read <file.svg>` | `FileCommands.ts` | `FileCommands.test.ts` |
-| `save [file.svg]` | `FileCommands.ts` | `FileCommands.test.ts` |
-| `canvas [w] [h]` | `DocumentCommands.ts` | `DocumentCommands.test.ts` |
+| `init [w] [h]` | `InitCommand.ts` | `DocumentCommands.test.ts` |
+| `read <file.svg>` | `ReadCommand.ts` | `FileCommands.test.ts` |
+| `save [file.svg]` | `SaveCommand.ts` | `FileCommands.test.ts` |
+| `canvas [w] [h]` | `CanvasCommand.ts` | `DocumentCommands.test.ts` |
 | `create <type> <id> … [in <cid>]` | `CreateCommand.ts` | `CreateCommand.test.ts` |
 | `delete <id>` | `DeleteCommand.ts` | `EditCommands.test.ts` |
 | `move <id> <dx> <dy>` | `MoveCommand.ts` | `EditCommands.test.ts` |
@@ -418,11 +494,17 @@ grep -rnE "switch \(|\.typeName ===|instanceof (Rect|Circle|Ellipse|Line|Text)" 
 | `group <gid> <id…>` | `GroupCommand.ts` | `StructuralCommands.test.ts` |
 | `ungroup <gid>` | `UngroupCommand.ts` | `StructuralCommands.test.ts` |
 | `addto <gid> <id>` | `AddToCommand.ts` | `StructuralCommands.test.ts` |
-| `front` / `back` | `ZOrderCommands.ts` | `StructuralCommands.test.ts` |
-| `tree [id]` | `DisplayCommands.ts` + `TreeRenderer` | `transcripts.test.ts` |
-| `show <id>` | `DisplayCommands.ts` + `ShowRenderer` | `EditCommands.test.ts` |
-| `undo` / `redo` | `DisplayCommands.ts` + `CommandHistory` | `UndoRedo.test.ts` |
+| `front <id>` | `FrontCommand.ts` | `StructuralCommands.test.ts` |
+| `back <id>` | `BackCommand.ts` | `StructuralCommands.test.ts` |
+| `tree [id]` | `TreeCommand.ts` + `TreeRenderer` | `transcripts.test.ts` |
+| `show <id>` | `ShowCommand.ts` + `ShowRenderer` | `EditCommands.test.ts` |
+| `undo` | `UndoCommand.ts` + `CommandHistory` | `UndoRedo.test.ts` |
+| `redo` | `RedoCommand.ts` + `CommandHistory` | `UndoRedo.test.ts` |
 | `help` | `HelpCommand.ts` | `transcripts.test.ts` |
+
+命令注册表（`CommandRegistry.ts`）的 19 个条目与上表 19 行一一对应；`tests/architecture` 另外断言
+“每条命令一个类一个文件”，因此新增命令时漏建文件会被测试拒绝。
+
 
 题目 §4.2 的 12 条错误文案逐条核对（`tests/` 中均有断言）：
 
@@ -458,40 +540,49 @@ grep -rnE "switch \(|\.typeName ===|instanceof (Rect|Circle|Ellipse|Line|Text)" 
 
 | 层次 | 文件 | 关注点 |
 |---|---|---|
+| 架构规则 | `tests/architecture/Architecture.test.ts` | 一类一文件、无自由函数、分派点、依赖方向、`any`、IO 隔离 |
 | 领域模型 | `tests/domain/ShapeTree.test.ts` | 几何单元格语义、Composite 递归、克隆、环拒绝 |
 | 词法 | `tests/shared/Tokenizer.test.ts` | 引号、内联 `#`、BOM、未闭合引号 |
 | 命令 | `tests/commands/*.test.ts` | 每条命令的成功路径 + 全部错误文案 + “失败不改状态” |
+| 命令边界 | `tests/commands/DocumentBoundary.test.ts` | 编辑型 undo 与文档型命令的相互不干扰 |
 | IO | `tests/io/FileCommands.test.ts` | round-trip、缺 id 警告、viewBox 推导、转义 |
-| 端到端 | `tests/transcripts.test.ts` | 题目 transcript 全等 |
+| 进程入口 | `tests/cli/CompositionRoot.test.ts` | `--script` 真实落盘、缺文件退出码 |
+| REPL | `tests/cli/Repl.test.ts` | 注释/空行、CRLF、`error:` 翻译、Banner |
+| 端到端 | `tests/transcripts.test.ts` | 题目 transcript 逐行全等 |
 
-测试总数 102，全部通过。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。
+测试总数 **116**，全部通过（13 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
 
 ### 4.3 静态保障
 
 ```bash
 npm run typecheck     # tsc --noEmit，strict + noUncheckedIndexedAccess
 npm run build         # tsc -p tsconfig.build.json，产出 dist/
-npm test              # 102 tests
+npm test              # 116 tests
 npm run check         # 前两者合一
 ```
 
 `strict` + `noUnusedLocals` + `noUncheckedIndexedAccess` 的组合刻意设得比默认严格：
 它把“可能为 undefined 的数组下标”“未使用的私有字段”都变成编译错误，而这两类正是重构后最容易留下的垃圾。
+（`parsePositiveNumber`、`describeTokens`、`detach`、`topLevelGroup`、`DocumentOrder` 这些死代码就是这样被清掉的：
+要么编译期报“从未使用”，要么被架构测试的规则扫描暴露。）
 
 ### 4.4 我对代码质量有信心的依据
 
-1. **删除测试的语义最强**：`delete box` → `undo` → 断言 `show box` 的 `parent=g#markers` 且 z-order 复原。这条测试同时验证了 Memento、父容器恢复、顺序恢复三件事。
-2. **失败路径有断言**：每条 `error:` 文案都有一条测试；并且至少 3 条测试断言“失败前后 `tree` 完全相同”（`create`、`group`、`set`）。
-3. **不变式在模型层**：环检测、正数校验、id 唯一性都在 `domain` 内，不依赖命令层“记得校验”。将来接 GUI 通道时这些不变式依然生效。
-4. **两处按名分派被显式围栏**：`ShapeFactory` 与 `CommandRegistry` 有注释标明“待重构为插件注册表”，且一致性自查给出 grep 复核命令——所以“以后不小心又加了一处 switch”是可被机械发现的。
-5. **没有一行 `any`**：全仓 `grep -rn ": any" src/` 无输出；`unknown` 只在 XML 解析边界出现，并在同文件内被收窄成 `RawSvgElement`。
-6. **可回放**：`scripts/*.cli` 是可以直接 `npm run demo` 重跑的真实会话，`examples/*.svg` 是它们的产物——文档里描述的每个效果都有可执行的对应物。
+1. **规则被测试执行，而不是被声明**：范式层与分层规则共 11 条断言（§3.2 的表），`npm test` 每次都会跑。本轮就是靠它发现“一个文件多个类”“命令层依赖 presentation 与文档不符”这两个问题的。
+2. **删除测试的语义最强**：`delete box` → `undo` → 断言 `show box` 的 `parent=g#markers` 且 z-order 复原。这条测试同时验证了 Memento、父容器恢复、顺序恢复三件事。
+3. **失败路径有断言**：每条 `error:` 文案都有一条测试；并且至少 3 条测试断言“失败前后 `tree` 完全相同”（`create`、`group`、`set`）。
+4. **不变式在模型层**：环检测、正数校验、id 唯一性都在 `domain` 内，不依赖命令层“记得校验”。将来接 GUI 通道时这些不变式依然生效。
+5. **没有一行 `any`**：由架构测试断言；`unknown` 只在 XML 解析边界出现，并在同文件内被收窄成 `RawSvgElement`。
+6. **可回放**：`scripts/*.cli` 是可以直接 `npm run demo` / `npm run flowchart` 重跑的真实会话，`examples/*.svg` 是它们的产物——文档里描述的每个效果都有可执行的对应物。回归也是靠它抓到的（§2.10：`npm test` 全绿但 `npm run demo` 无输出）。
 
 ### 4.5 已知未覆盖项（如实记录）
 
 | 项 | 现状 | 原因 |
 |---|---|---|
 | `box` 复合图形 | 未实现，`create box` 按题目要求报 `unknown shape type` | 题目 §4.4 明确“本阶段不要求实现” |
-| 交互式 REPL 的 readline 分支 | 未被自动化测试覆盖 | 需要伪终端；`Repl.runLine` 被完整覆盖，未覆盖的只是 `rl.prompt()` 的接线 |
+| 交互式 REPL 的 readline 分支 | 未被自动化测试覆盖 | 需要伪终端；`Repl.runLine` / `replay` 被完整覆盖，未覆盖的只是 `rl.prompt()` 的接线 |
 | 浮点精度 | 显示与序列化保留 3 位小数 | 题目未规定精度；3 位对 px 足够，且避免 `0.30000000000000004` 出现在输出里 |
 | 超大文档的 undo 内存 | 整树快照 | 见 §1.4 ③ 的权衡说明 |
+| 导入文件里的 `transform` | 属性被完整保留，但 `move`/`scale` 只改本地坐标，不会**合成**变换 | 题目第 3 节的命令从不产生 `transform`；要做变换合成需要矩阵栈，属第二阶段（见 §1.4 ②） |
+| `main.ts` 不声明类 | 架构测试对它豁免“文件名 = 类名” | 它是 bin 入口（`#!/usr/bin/env node` + 一次调用），不承载任何逻辑；逻辑都在 `CompositionRoot` |
+

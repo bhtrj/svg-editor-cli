@@ -1,11 +1,12 @@
 @startuml
 skinparam componentStyle rectangle
 skinparam packageStyle rectangle
-title SVG 编辑器 CLI — 模块与依赖方向
+title SVG 编辑器 CLI — 模块与依赖方向（一类一文件）
 
 package "cli（最外层）" {
+  [main（bin 入口）]
+  [CompositionRoot 组合根]
   [Repl]
-  [main / composition root]
 }
 
 package "app（用例编排）" {
@@ -13,15 +14,28 @@ package "app（用例编排）" {
   [EditorSession]
 }
 
-package "commands（Command 模式）" {
+package "commands（Command 模式，19 个命令类）" {
   [CommandRegistry]
+  [CommandSyntax]
   [CommandHistory]
-  [18 个 *Command 类]
+  [InitCommand / CanvasCommand]
+  [ReadCommand / SaveCommand]
+  [CreateCommand / DeleteCommand]
+  [MoveCommand / ScaleCommand / SetAttributeCommand]
+  [GroupCommand / UngroupCommand / AddToCommand]
+  [FrontCommand / BackCommand]
+  [TreeCommand / ShowCommand / UndoCommand / RedoCommand / HelpCommand]
 }
 
-package "domain（核心，零依赖）" {
+package "presentation（文本视图）" {
+  [TreeRenderer]
+  [TreeRow]
+  [ShowRenderer]
+}
+
+package "domain（核心，只依赖 shared）" {
   [Shape]
-  [Group\n«Composite»]
+  [Group «Composite»]
   [Rect / Circle /\nEllipse / Line / Text]
   [SvgDocument]
   [ShapeFactory]
@@ -35,46 +49,51 @@ package "io（格式与文件）" {
   [NodeFileGateway]
 }
 
-package "presentation（文本视图）" {
-  [TreeRenderer]
-  [ShowRenderer]
-}
-
-package "shared（端口与基建）" {
+package "shared（端口与工具类）" {
   [EditorError]
-  [Tokenizer / Arguments]
+  [Numbers / Xml / Tokenizer / Arguments]
   [FileGateway «port»]
   [DocumentCodec «port»]
 }
 
-main / composition root --> Repl
-main / composition root --> EditorSession
-main / composition root --> SvgCodec
-main / composition root --> NodeFileGateway
+main（bin 入口） --> CompositionRoot 组合根
+CompositionRoot 组合根 --> Repl
+CompositionRoot 组合根 --> EditorSession
+CompositionRoot 组合根 --> SvgCodec
+CompositionRoot 组合根 --> NodeFileGateway
 Repl --> CommandRunner
 CommandRunner --> CommandRegistry
 CommandRunner --> CommandHistory
 CommandRunner --> EditorSession
 EditorSession ..|> CommandContext
-18 个 *Command 类 --> Shape
-18 个 *Command 类 --> CommandHistory
+MoveCommand / ScaleCommand / SetAttributeCommand --> Shape
+GroupCommand / UngroupCommand / AddToCommand --> Shape
+CreateCommand / DeleteCommand --> Shape
+TreeCommand / ShowCommand / UndoCommand / RedoCommand / HelpCommand --> TreeRenderer
+CommandRegistry --> CommandSyntax
 SvgCodec ..|> DocumentCodec
 NodeFileGateway ..|> FileGateway
 SvgDecoder --> ShapeFactory
+Group «Composite» --> Shape
+SvgDocument --> Shape
 TreeRenderer --> Shape
 ShowRenderer --> Shape
-Group --> Shape
-SvgDocument --> Shape
 
 note right of commands
-  依赖方向：commands 只依赖 domain 与端口，
+  依赖方向：commands 只依赖 domain、presentation 与端口，
   不 import io / app / cli —— 因此图中
   commands 与 io 之间没有箭头。
 end note
 
 note bottom of domain
   domain 不依赖任何上层模块；
-  这是整个架构的依赖汇点。
+  这是整个架构的依赖汇点，
+  也是唯一可以在没有 fs / 终端的情况下测试的层。
+end note
+
+note bottom of presentation
+  presentation 位于 domain 之上、commands/io 之下：
+  纯渲染、无副作用，可供两处复用。
 end note
 
 @enduml
