@@ -1,0 +1,29 @@
+{
+  "name": "svg-editor-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lab1 Phase 1 - an OOP SVG editor with an undoable command-based CLI",
+  "type": "module",
+  "bin": {
+    "svg-editor": "dist/cli/main.js"
+  },
+  "scripts": {
+    "cli": "tsx src/cli/main.ts",
+    "demo": "tsx src/cli/main.ts --script scripts/demo.cli",
+    "flowchart": "tsx src/cli/main.ts --script scripts/flowchart.cli",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
