@@ -1,5 +1,5 @@
 import { EditorError } from "../shared/EditorError.js";
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { AttributeBag } from "./AttributeBag.js";
 import type { NumericAttribute } from "./NumericAttribute.js";
 import { Point } from "./Point.js";
@@ -141,7 +141,7 @@ export abstract class Shape {
     }
     const cell = this.geometry().find((candidate) => candidate.name === name);
     if (cell !== undefined) {
-      const numeric = parseNumeric(value);
+      const numeric = Shape.parseNumeric(value);
       if (cell.isSize && numeric <= 0) {
         throw new EditorError(`value must be positive: ${value}`);
       }
@@ -162,7 +162,7 @@ export abstract class Shape {
     }
     const cell = this.geometry().find((candidate) => candidate.name === name);
     if (cell !== undefined) {
-      return formatNumber(cell.get());
+      return Numbers.format(cell.get());
     }
     return this.attributes.get(name);
   }
@@ -221,13 +221,22 @@ export abstract class Shape {
   protected ownDetailLines(): readonly string[] {
     return [];
   }
-}
 
-function parseNumeric(value: string): number {
-  const trimmed = value.trim();
-  const numeric = Number(trimmed);
-  if (trimmed === "" || !Number.isFinite(numeric)) {
-    throw new EditorError(`invalid number: ${value}`);
+  /** How many shapes this shape's subtree contains (0 for a leaf). */
+  descendantCount(): number {
+    let count = 0;
+    for (const child of this.children) {
+      count += 1 + child.descendantCount();
+    }
+    return count;
   }
-  return numeric;
+
+  private static parseNumeric(value: string): number {
+    const trimmed = value.trim();
+    const numeric = Number(trimmed);
+    if (trimmed === "" || !Number.isFinite(numeric)) {
+      throw new EditorError(`invalid number: ${value}`);
+    }
+    return numeric;
+  }
 }

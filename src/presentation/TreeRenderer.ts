@@ -1,21 +1,6 @@
 import type { Shape } from "../domain/Shape.js";
 import type { SvgDocument } from "../domain/SvgDocument.js";
-
-/** One rendered tree row: the prefix, the label and the inline summary. */
-export class TreeRow {
-  constructor(
-    readonly prefix: string,
-    readonly label: string,
-    readonly summary: string,
-  ) {}
-
-  format(labelWidth: number): string {
-    if (this.summary === "") {
-      return `${this.prefix}${this.label}`;
-    }
-    return `${this.prefix}${this.label.padEnd(labelWidth)}  ${this.summary}`;
-  }
-}
+import { TreeRow } from "./TreeRow.js";
 
 /**
  * Renders the `tree` view (§5.1) — a box-drawing outline with geometry inlined.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BANNER, Repl } from "../../src/cli/Repl.js";
+import { Repl } from "../../src/cli/Repl.js";
 import { CommandRegistry } from "../../src/commands/CommandRegistry.js";
 import { ShapeFactory } from "../../src/domain/ShapeFactory.js";
 import { SvgCodec } from "../../src/io/SvgCodec.js";
@@ -71,6 +71,6 @@ describe("Repl.replay", () => {
 
 describe("banner", () => {
   it("matches the documented start-up line", () => {
-    expect(BANNER).toBe("svg-editor 0.1 — type 'help' for commands");
+    expect(Repl.BANNER).toBe("svg-editor 0.1 — type 'help' for commands");
   });
 });

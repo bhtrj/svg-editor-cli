@@ -3,7 +3,7 @@ import type { Shape } from "../domain/Shape.js";
 import type { ShapeFactoryPort } from "../domain/ShapeFactoryPort.js";
 import { SvgDocument } from "../domain/SvgDocument.js";
 import type { DecodedDocument } from "../domain/DocumentCodec.js";
-import type { RawSvgElement } from "./SvgXmlReader.js";
+import type { RawSvgElement } from "./RawSvgElement.js";
 import { SvgXmlReader } from "./SvgXmlReader.js";
 
 /** Attributes the kernel models through geometry cells — never kept as extras. */
@@ -27,6 +27,14 @@ const MODELLED_ATTRIBUTES = new Set([
 /** Elements that carry metadata rather than drawing content. */
 const SKIPPED_ELEMENTS = new Set(["title", "desc", "defs", "metadata"]);
 
+/** The state one `decode` call threads through the tree walk. */
+interface DecodeState {
+  readonly factory: ShapeFactoryPort;
+  readonly warnings: string[];
+  readonly takenIds: Set<string>;
+  readonly counters: Map<string, number>;
+}
+
 /**
  * Turns an SVG file into the domain model (`read`).
  *
@@ -44,33 +52,28 @@ export class SvgDecoder {
 
   decode(text: string, factory: ShapeFactoryPort): DecodedDocument {
     const raw = this.#reader.parse(text);
-    const warnings: string[] = [];
-    const takenIds = new Set<string>();
-    const counters = new Map<string, number>();
+    const state: DecodeState = {
+      factory,
+      warnings: [],
+      takenIds: new Set<string>(),
+      counters: new Map<string, number>(),
+    };
 
-    collectIds(raw.root, takenIds);
+    SvgDecoder.#collectIds(raw.root, state.takenIds);
 
-    const shapes = raw.root.map((element) =>
-      this.#toShape(element, factory, warnings, takenIds, counters),
-    );
+    const shapes = raw.root.map((element) => this.#toShape(element, state));
 
     const document = new SvgDocument(raw.width ?? 800, raw.height ?? 600);
     document.replaceChildren(shapes);
-    return { document, warnings };
+    return { document, warnings: state.warnings };
   }
 
-  #toShape(
-    element: RawSvgElement,
-    factory: ShapeFactoryPort,
-    warnings: string[],
-    takenIds: Set<string>,
-    counters: Map<string, number>,
-  ): Shape {
-    if (!factory.supports(element.tag)) {
+  #toShape(element: RawSvgElement, state: DecodeState): Shape {
+    if (!state.factory.supports(element.tag)) {
       throw new EditorError(`unknown shape type: ${element.tag} (is the plugin loaded?)`);
     }
 
-    const id = resolveId(element, warnings, takenIds, counters);
+    const id = SvgDecoder.#resolveId(element, state);
     const values = new Map<string, string>([["id", id]]);
     for (const [name, value] of element.attributes) {
       if (name !== "id" && MODELLED_ATTRIBUTES.has(name)) {
@@ -78,10 +81,10 @@ export class SvgDecoder {
       }
     }
     if (element.tag === "text") {
-      values.set("content", textContentOf(element));
+      values.set("content", SvgDecoder.#textContentOf(element));
     }
 
-    const shape = factory.createFromAttributes(element.tag, values);
+    const shape = state.factory.createFromAttributes(element.tag, values);
 
     for (const [name, value] of element.attributes) {
       if (!MODELLED_ATTRIBUTES.has(name)) {
@@ -95,56 +98,48 @@ export class SvgDecoder {
         if (SKIPPED_ELEMENTS.has(child.tag)) {
           continue;
         }
-        container.insertChildAt(
-          container.children.length,
-          this.#toShape(child, factory, warnings, takenIds, counters),
-        );
+        container.insertChildAt(container.children.length, this.#toShape(child, state));
       }
     }
 
     return shape;
   }
-}
 
-function collectIds(elements: readonly RawSvgElement[], into: Set<string>): void {
-  for (const element of elements) {
-    const id = element.attributes.get("id");
-    if (id !== undefined && id !== "") {
-      into.add(id);
+  static #collectIds(elements: readonly RawSvgElement[], into: Set<string>): void {
+    for (const element of elements) {
+      const id = element.attributes.get("id");
+      if (id !== undefined && id !== "") {
+        into.add(id);
+      }
+      SvgDecoder.#collectIds(element.children, into);
     }
-    collectIds(element.children, into);
-  }
-}
-
-/** `rect` → `rect1`, skipping every id that already exists in the file. */
-function resolveId(
-  element: RawSvgElement,
-  warnings: string[],
-  takenIds: Set<string>,
-  counters: Map<string, number>,
-): string {
-  const existing = element.attributes.get("id");
-  if (existing !== undefined && existing !== "") {
-    return existing;
   }
 
-  let counter = counters.get(element.tag) ?? 0;
-  let candidate = "";
-  do {
-    counter += 1;
-    candidate = `${element.tag}${counter}`;
-  } while (takenIds.has(candidate));
-  counters.set(element.tag, counter);
-  takenIds.add(candidate);
-  warnings.push(`warning: assigned id ${candidate} to unnamed <${element.tag}>`);
-  return candidate;
-}
+  /** `rect` → `rect1`, skipping every id that already exists in the file. */
+  static #resolveId(element: RawSvgElement, state: DecodeState): string {
+    const existing = element.attributes.get("id");
+    if (existing !== undefined && existing !== "") {
+      return existing;
+    }
 
-/**
- * A `<text>` element's content is its child node; pretty-printed files indent it,
- * so a single leading/trailing newline-plus-indent block is trimmed while inner
- * whitespace is preserved.
- */
-function textContentOf(element: RawSvgElement): string {
-  return element.text.replace(/^\s*\n\s*/, "").replace(/\s*\n\s*$/, "");
+    let counter = state.counters.get(element.tag) ?? 0;
+    let candidate = "";
+    do {
+      counter += 1;
+      candidate = `${element.tag}${counter}`;
+    } while (state.takenIds.has(candidate));
+    state.counters.set(element.tag, counter);
+    state.takenIds.add(candidate);
+    state.warnings.push(`warning: assigned id ${candidate} to unnamed <${element.tag}>`);
+    return candidate;
+  }
+
+  /**
+   * A `<text>` element's content is its child node; pretty-printed files indent
+   * it, so a single leading/trailing newline-plus-indent block is trimmed while
+   * inner whitespace is preserved.
+   */
+  static #textContentOf(element: RawSvgElement): string {
+    return element.text.replace(/^\s*\n\s*/, "").replace(/\s*\n\s*$/, "");
+  }
 }

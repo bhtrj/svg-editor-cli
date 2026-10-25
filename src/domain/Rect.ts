@@ -1,4 +1,4 @@
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { NumericAttribute } from "./NumericAttribute.js";
 import { Shape } from "./Shape.js";
 import type { SvgElementNode } from "./SvgElementNode.js";
@@ -28,10 +28,10 @@ export class Rect extends Shape {
     return {
       tag: "rect",
       attributes: this.elementAttributes({
-        x: formatNumber(this.#x.get()),
-        y: formatNumber(this.#y.get()),
-        width: formatNumber(this.#width.get()),
-        height: formatNumber(this.#height.get()),
+        x: Numbers.format(this.#x.get()),
+        y: Numbers.format(this.#y.get()),
+        width: Numbers.format(this.#width.get()),
+        height: Numbers.format(this.#height.get()),
       }),
     };
   }

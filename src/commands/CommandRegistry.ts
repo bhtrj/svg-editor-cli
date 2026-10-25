@@ -1,9 +1,9 @@
 import { EditorError } from "../shared/EditorError.js";
 import { Arguments } from "../shared/Arguments.js";
-import type { Token } from "../shared/Tokenizer.js";
+import type { Token } from "../shared/Token.js";
 import type { CliCommand } from "./Command.js";
 import type { CommandContext } from "./CommandContext.js";
-import { usageOf } from "./CommandSyntax.js";
+import { CommandSyntax } from "./CommandSyntax.js";
 import { CreateCommand } from "./CreateCommand.js";
 import { DeleteCommand } from "./DeleteCommand.js";
 import { MoveCommand } from "./MoveCommand.js";
@@ -12,10 +12,16 @@ import { SetAttributeCommand } from "./SetAttributeCommand.js";
 import { GroupCommand } from "./GroupCommand.js";
 import { UngroupCommand } from "./UngroupCommand.js";
 import { AddToCommand } from "./AddToCommand.js";
-import { BackCommand, FrontCommand } from "./ZOrderCommands.js";
-import { CanvasCommand, InitCommand } from "./DocumentCommands.js";
-import { ReadCommand, SaveCommand } from "./FileCommands.js";
-import { RedoCommand, ShowCommand, TreeCommand, UndoCommand } from "./DisplayCommands.js";
+import { BackCommand } from "./BackCommand.js";
+import { FrontCommand } from "./FrontCommand.js";
+import { CanvasCommand } from "./CanvasCommand.js";
+import { InitCommand } from "./InitCommand.js";
+import { ReadCommand } from "./ReadCommand.js";
+import { SaveCommand } from "./SaveCommand.js";
+import { RedoCommand } from "./RedoCommand.js";
+import { ShowCommand } from "./ShowCommand.js";
+import { TreeCommand } from "./TreeCommand.js";
+import { UndoCommand } from "./UndoCommand.js";
 import { HelpCommand } from "./HelpCommand.js";
 
 /** Parses the tokens that follow a command name into a command object. */
@@ -55,7 +61,7 @@ export class CommandRegistry {
     if (builder === undefined) {
       throw new EditorError(`unknown command: ${name}`);
     }
-    return builder(new Arguments(tokens, usageOf(name)), context);
+    return builder(new Arguments(tokens, CommandSyntax.usageOf(name)), context);
   }
 
   has(name: string): boolean {
@@ -68,9 +74,6 @@ export class CommandRegistry {
 
   /** `[name, usage]` pairs in registration order, for `help`. */
   usages(): ReadonlyArray<readonly [string, string]> {
-    return this.names().map((name) => [name, usageOf(name)] as const);
+    return this.names().map((name) => [name, CommandSyntax.usageOf(name)] as const);
   }
 }
-
-/** Re-exported so command modules have a single import for their syntax. */
-export { usageOf };

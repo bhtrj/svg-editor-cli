@@ -1,5 +1,5 @@
 import { EditorError } from "../shared/EditorError.js";
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import type { Shape } from "./Shape.js";
 import type { ShapeContainer } from "./ShapeContainer.js";
 import type { SvgElementNode } from "./SvgElementNode.js";
@@ -60,7 +60,7 @@ export class SvgDocument implements ShapeContainer {
 
   /** `svg (800x600)` — the `tree` root line and the `init` feedback. */
   get label(): string {
-    return `svg (${formatNumber(this.#width)}x${formatNumber(this.#height)})`;
+    return `svg (${Numbers.format(this.#width)}x${Numbers.format(this.#height)})`;
   }
 
   indexOf(shape: Shape): number {
@@ -136,14 +136,31 @@ export class SvgDocument implements ShapeContainer {
     return this.#children.map((child) => child.clone());
   }
 
+  /**
+   * Sorts `shapes` into document order (depth-first, z-order within siblings).
+   *
+   * `group` uses this so members keep their relative order; living on the
+   * document keeps the definition of "document order" in one place rather than
+   * in a loose helper next to the command.
+   */
+  sortInDocumentOrder(shapes: readonly Shape[]): Shape[] {
+    const index = new Map<Shape, number>();
+    let position = 0;
+    for (const shape of this.walk()) {
+      index.set(shape, position);
+      position += 1;
+    }
+    return [...shapes].sort((left, right) => (index.get(left) ?? 0) - (index.get(right) ?? 0));
+  }
+
   toSvgElement(): SvgElementNode {
     return {
       tag: "svg",
       attributes: {
         xmlns: "http://www.w3.org/2000/svg",
-        width: formatNumber(this.#width),
-        height: formatNumber(this.#height),
-        viewBox: `0 0 ${formatNumber(this.#width)} ${formatNumber(this.#height)}`,
+        width: Numbers.format(this.#width),
+        height: Numbers.format(this.#height),
+        viewBox: `0 0 ${Numbers.format(this.#width)} ${Numbers.format(this.#height)}`,
       },
       children: this.#children.map((child) => child.toSvgElement()),
     };

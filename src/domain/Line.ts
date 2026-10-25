@@ -1,4 +1,4 @@
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { NumericAttribute } from "./NumericAttribute.js";
 import { Point } from "./Point.js";
 import { Shape } from "./Shape.js";
@@ -49,10 +49,10 @@ export class Line extends Shape {
     return {
       tag: "line",
       attributes: this.elementAttributes({
-        x1: formatNumber(this.#x1.get()),
-        y1: formatNumber(this.#y1.get()),
-        x2: formatNumber(this.#x2.get()),
-        y2: formatNumber(this.#y2.get()),
+        x1: Numbers.format(this.#x1.get()),
+        y1: Numbers.format(this.#y1.get()),
+        x2: Numbers.format(this.#x2.get()),
+        y2: Numbers.format(this.#y2.get()),
       }),
     };
   }

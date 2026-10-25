@@ -1,5 +1,5 @@
 import { EditorError } from "../shared/EditorError.js";
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 
 /**
  * One numeric attribute a shape really owns (`x`, `width`, `cx`, ...).
@@ -54,11 +54,11 @@ export class NumericAttribute {
 
   /** `w=160` — the `tree` fragment for this cell. */
   get summary(): string {
-    return `${this.alias}=${formatNumber(this.#value)}`;
+    return `${this.alias}=${Numbers.format(this.#value)}`;
   }
 
   /** `width=160` — the `show` fragment for this cell. */
   get detail(): string {
-    return `${this.name}=${formatNumber(this.#value)}`;
+    return `${this.name}=${Numbers.format(this.#value)}`;
   }
 }

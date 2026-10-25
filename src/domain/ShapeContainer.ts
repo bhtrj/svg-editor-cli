@@ -16,12 +16,3 @@ export interface ShapeContainer {
   /** True when `shape` is this container or one of its descendants. */
   contains(shape: Shape): boolean;
 }
-
-/** Detaches `shape` from its current parent, if any. */
-export function detach(shape: Shape): void {
-  const parent = shape.parent;
-  if (parent !== null) {
-    parent.removeChild(shape);
-    shape.setParent(null);
-  }
-}

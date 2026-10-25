@@ -1,12 +1,6 @@
-import { isIgnorableLine, tokenize } from "../shared/Tokenizer.js";
+import { Tokenizer } from "../shared/Tokenizer.js";
 import type { CliCommand, UndoableCommand } from "../commands/Command.js";
 import type { CommandContext } from "../commands/CommandContext.js";
-
-/** True when the command is undoable (structural test, not a name check). */
-function isUndoable(command: CliCommand): command is UndoableCommand {
-  const candidate = command as Partial<UndoableCommand>;
-  return typeof candidate.undo === "function" && typeof candidate.redo === "function";
-}
 
 /**
  * The use-case layer for "one line of input".
@@ -26,18 +20,24 @@ export class CommandRunner {
 
   /** @returns the lines the command wants printed (never `error:` lines). */
   run(line: string): readonly string[] {
-    if (isIgnorableLine(line)) {
+    if (Tokenizer.isIgnorableLine(line)) {
       return [];
     }
 
-    const tokens = tokenize(line);
+    const tokens = Tokenizer.tokenize(line);
     const name = tokens[0]?.text ?? "";
     const command = this.context.registry.build(name, tokens.slice(1), this.context);
     const lines = command.execute();
 
-    if (isUndoable(command)) {
+    if (CommandRunner.isUndoable(command)) {
       this.context.history.record(command);
     }
     return lines;
+  }
+
+  /** True when the command is undoable (structural test, not a name check). */
+  private static isUndoable(command: CliCommand): command is UndoableCommand {
+    const candidate = command as Partial<UndoableCommand>;
+    return typeof candidate.undo === "function" && typeof candidate.redo === "function";
   }
 }

@@ -1,8 +1,11 @@
 import { EditorError } from "./EditorError.js";
-import { formatNumber } from "./Numbers.js";
+import type { Token } from "./Token.js";
+
+const QUOTE = '"';
+const ESCAPE = "\\";
 
 /**
- * Splits one REPL line into tokens.
+ * Splits one REPL line into tokens (and recognises ignorable lines).
  *
  * Two rules matter for the command grammars:
  *  - a line whose first non-space character is `#` is a comment (§2 of the
@@ -12,89 +15,73 @@ import { formatNumber } from "./Numbers.js";
  *    and mark it `quoted`, which is how `create ... in <container>` knows an
  *    unquoted `in` from a text argument that happens to read `"in"`.
  */
-export interface Token {
-  readonly text: string;
-  readonly quoted: boolean;
-}
+export class Tokenizer {
+  static tokenize(line: string): Token[] {
+    const tokens: Token[] = [];
+    let current = "";
+    let currentStarted = false;
+    let quoted = false;
+    let inQuotes = false;
 
-const QUOTE = '"';
-const ESCAPE = "\\";
+    const flush = (): void => {
+      if (currentStarted) {
+        tokens.push({ text: current, quoted });
+      }
+      current = "";
+      currentStarted = false;
+      quoted = false;
+    };
 
-export function tokenize(line: string): Token[] {
-  const tokens: Token[] = [];
-  let current = "";
-  let currentStarted = false;
-  let quoted = false;
-  let inQuotes = false;
+    // A script saved by a Windows editor usually starts with a UTF-8 BOM; it is
+    // not part of the first command name.
+    const source = line.charCodeAt(0) === 0xfeff ? line.slice(1) : line;
 
-  const flush = (): void => {
-    if (currentStarted) {
-      tokens.push({ text: current, quoted });
-    }
-    current = "";
-    currentStarted = false;
-    quoted = false;
-  };
+    for (let index = 0; index < source.length; index += 1) {
+      const char = source[index] as string;
 
-  // A script saved by a Windows editor usually starts with a UTF-8 BOM; it is
-  // not part of the first command name.
-  const source = line.charCodeAt(0) === 0xfeff ? line.slice(1) : line;
-
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index] as string;
-
-    if (inQuotes) {
-      if (char === ESCAPE && index + 1 < source.length) {
-        index += 1;
-        current += source[index] as string;
+      if (inQuotes) {
+        if (char === ESCAPE && index + 1 < source.length) {
+          index += 1;
+          current += source[index] as string;
+          continue;
+        }
+        if (char === QUOTE) {
+          inQuotes = false;
+          // A quoted section closes the token; a following space separates it.
+          flush();
+          continue;
+        }
+        current += char;
         continue;
       }
+
       if (char === QUOTE) {
-        inQuotes = false;
-        // A quoted section closes the token; a following space separates it.
+        inQuotes = true;
+        quoted = true;
+        currentStarted = true;
+        continue;
+      }
+
+      if (char === " " || char === "\t" || char === "\r") {
         flush();
         continue;
       }
+
       current += char;
-      continue;
-    }
-
-    if (char === QUOTE) {
-      inQuotes = true;
-      quoted = true;
       currentStarted = true;
-      continue;
     }
 
-    if (char === " " || char === "\t" || char === "\r") {
-      flush();
-      continue;
+    if (inQuotes) {
+      throw new EditorError("unterminated string literal");
     }
 
-    current += char;
-    currentStarted = true;
+    flush();
+    return tokens;
   }
 
-  if (inQuotes) {
-    throw new EditorError("unterminated string literal");
+  /** True when the line carries no command (blank line or `#` comment). */
+  static isIgnorableLine(line: string): boolean {
+    const trimmed = line.replace(/^\uFEFF/, "").trim();
+    return trimmed === "" || trimmed.startsWith("#");
   }
-
-  flush();
-  return tokens;
 }
-
-/** True when the line carries no command (blank line or `#` comment). */
-export function isIgnorableLine(line: string): boolean {
-  const trimmed = line.replace(/^\uFEFF/, "").trim();
-  return trimmed === "" || trimmed.startsWith("#");
-}
-
-/** Re-joins tokens for error messages, quoting tokens that need it. */
-export function describeTokens(tokens: readonly Token[]): string {
-  return tokens
-    .map((token) => (token.quoted || token.text.includes(" ") ? `${QUOTE}${token.text}${QUOTE}` : token.text))
-    .join(" ");
-}
-
-/** Renders a number the way the CLI prints it (`130`, not `130.0`). */
-export { formatNumber };

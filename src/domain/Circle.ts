@@ -1,4 +1,4 @@
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { NumericAttribute } from "./NumericAttribute.js";
 import { Shape } from "./Shape.js";
 import type { SvgElementNode } from "./SvgElementNode.js";
@@ -26,9 +26,9 @@ export class Circle extends Shape {
     return {
       tag: "circle",
       attributes: this.elementAttributes({
-        cx: formatNumber(this.#cx.get()),
-        cy: formatNumber(this.#cy.get()),
-        r: formatNumber(this.#r.get()),
+        cx: Numbers.format(this.#cx.get()),
+        cy: Numbers.format(this.#cy.get()),
+        r: Numbers.format(this.#r.get()),
       }),
     };
   }

@@ -47,7 +47,9 @@ export class SetAttributeCommand extends AbstractEditCommand {
   }
 
   protected renderUndo(): readonly string[] {
-    return [`${this.#label} updated: ${this.#attribute}=${quoteIfText(this.attribute, this.#previous)}`];
+    return [
+      `${this.#label} updated: ${this.#attribute}=${SetAttributeCommand.quoteIfText(this.#attribute, this.#previous)}`,
+    ];
   }
 
   protected renderRedo(): readonly string[] {
@@ -55,14 +57,14 @@ export class SetAttributeCommand extends AbstractEditCommand {
   }
 
   private updatedMessage(): string {
-    return `${this.#label} updated: ${this.#attribute}=${quoteIfText(this.#attribute, this.#next)}`;
+    return `${this.#label} updated: ${this.#attribute}=${SetAttributeCommand.quoteIfText(this.#attribute, this.#next)}`;
   }
-}
 
-/**
- * The transcript quotes text content (`text="My Diagram"`) but not geometry
- * (`text` is the one attribute whose value may contain spaces).
- */
-function quoteIfText(attribute: string, value: string): string {
-  return attribute === "text" ? `"${value}"` : value;
+  /**
+   * The transcript quotes text content (`text="My Diagram"`) but not geometry
+   * (`text` is the one attribute whose value may contain spaces).
+   */
+  private static quoteIfText(attribute: string, value: string): string {
+    return attribute === "text" ? `"${value}"` : value;
+  }
 }

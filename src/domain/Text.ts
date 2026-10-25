@@ -1,4 +1,4 @@
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { NumericAttribute } from "./NumericAttribute.js";
 import { Shape } from "./Shape.js";
 import type { SvgElementNode } from "./SvgElementNode.js";
@@ -62,8 +62,8 @@ export class Text extends Shape {
     return {
       tag: "text",
       attributes: this.elementAttributes({
-        x: formatNumber(this.#x.get()),
-        y: formatNumber(this.#y.get()),
+        x: Numbers.format(this.#x.get()),
+        y: Numbers.format(this.#y.get()),
       }),
       text: this.#content,
     };

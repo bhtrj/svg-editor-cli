@@ -1,4 +1,4 @@
-import { escapeXmlAttribute, escapeXmlText } from "../shared/Xml.js";
+import { Xml } from "../shared/Xml.js";
 import type { SvgElementNode } from "../domain/SvgElementNode.js";
 import type { SvgDocument } from "../domain/SvgDocument.js";
 
@@ -20,11 +20,11 @@ export class SvgEncoder {
   #writeElement(element: SvgElementNode, depth: number, lines: string[]): void {
     const indent = "  ".repeat(depth);
     const attributes = Object.entries(element.attributes)
-      .map(([name, value]) => ` ${name}="${escapeXmlAttribute(value)}"`)
+      .map(([name, value]) => ` ${name}="${Xml.escapeAttribute(value)}"`)
       .join("");
 
     if (element.text !== undefined) {
-      lines.push(`${indent}<${element.tag}${attributes}>${escapeXmlText(element.text)}</${element.tag}>`);
+      lines.push(`${indent}<${element.tag}${attributes}>${Xml.escapeText(element.text)}</${element.tag}>`);
       return;
     }
 

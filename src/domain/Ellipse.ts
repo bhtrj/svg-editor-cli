@@ -1,4 +1,4 @@
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { NumericAttribute } from "./NumericAttribute.js";
 import { Shape } from "./Shape.js";
 import type { SvgElementNode } from "./SvgElementNode.js";
@@ -28,10 +28,10 @@ export class Ellipse extends Shape {
     return {
       tag: "ellipse",
       attributes: this.elementAttributes({
-        cx: formatNumber(this.#cx.get()),
-        cy: formatNumber(this.#cy.get()),
-        rx: formatNumber(this.#rx.get()),
-        ry: formatNumber(this.#ry.get()),
+        cx: Numbers.format(this.#cx.get()),
+        cy: Numbers.format(this.#cy.get()),
+        rx: Numbers.format(this.#rx.get()),
+        ry: Numbers.format(this.#ry.get()),
       }),
     };
   }

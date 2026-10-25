@@ -1,21 +1,9 @@
 import { XMLParser } from "fast-xml-parser";
 import { EditorError } from "../shared/EditorError.js";
+import type { RawSvgDocument } from "./RawSvgDocument.js";
+import type { RawSvgElement } from "./RawSvgElement.js";
 
-/** One element of a parsed SVG file, in document order. */
-export interface RawSvgElement {
-  readonly tag: string;
-  readonly attributes: ReadonlyMap<string, string>;
-  readonly text: string;
-  readonly children: readonly RawSvgElement[];
-}
-
-/** The parsed file: canvas size (from `width`/`height`, falling back to `viewBox`). */
-export interface RawSvgDocument {
-  readonly width: number | null;
-  readonly height: number | null;
-  readonly root: readonly RawSvgElement[];
-}
-
+/** A node of the `preserveOrder` parse tree. */
 type Node = Record<string, unknown>;
 
 /**
@@ -51,88 +39,96 @@ export class SvgXmlReader {
       throw new EditorError("invalid svg: no root element");
     }
 
-    const root = (parsed as Node[]).find((node) => elementTag(node) === "svg");
+    const root = (parsed as Node[]).find((node) => SvgXmlReader.#elementTag(node) === "svg");
     if (root === undefined) {
       throw new EditorError("invalid svg: missing <svg> root element");
     }
 
-    const attributes = readAttributes(root);
-    const width = numericOrNull(attributes.get("width")) ?? viewBoxPart(attributes.get("viewBox"), 2);
-    const height = numericOrNull(attributes.get("height")) ?? viewBoxPart(attributes.get("viewBox"), 3);
-
+    const attributes = SvgXmlReader.#readAttributes(root);
     return {
-      width,
-      height,
-      root: childrenOf(root)
-        .filter((child) => elementTag(child) !== "")
-        .map((child) => toElement(child)),
+      width: SvgXmlReader.#fromWidthOrViewBox(attributes.get("width"), attributes.get("viewBox"), 2),
+      height: SvgXmlReader.#fromWidthOrViewBox(attributes.get("height"), attributes.get("viewBox"), 3),
+      root: SvgXmlReader.#elementChildren(root),
     };
   }
-}
 
-function toElement(node: Node): RawSvgElement {
-  return {
-    tag: elementTag(node),
-    attributes: readAttributes(node),
-    text: textOf(node),
-    children: childrenOf(node)
-      .filter((child) => elementTag(child) !== "")
-      .map((child) => toElement(child)),
-  };
-}
-
-/** `""` for text/comment nodes, otherwise the single element key. */
-function elementTag(node: Node): string {
-  for (const key of Object.keys(node)) {
-    if (key !== ":@" && key !== "#text") {
-      return key;
-    }
+  static #elementChildren(node: Node): RawSvgElement[] {
+    return SvgXmlReader.#childrenOf(node)
+      .filter((child) => SvgXmlReader.#elementTag(child) !== "")
+      .map((child) => SvgXmlReader.#toElement(child));
   }
-  return "";
-}
 
-function childrenOf(node: Node): Node[] {
-  const value = node[elementTag(node)];
-  return Array.isArray(value) ? (value as Node[]) : [];
-}
+  static #toElement(node: Node): RawSvgElement {
+    return {
+      tag: SvgXmlReader.#elementTag(node),
+      attributes: SvgXmlReader.#readAttributes(node),
+      text: SvgXmlReader.#textOf(node),
+      children: SvgXmlReader.#elementChildren(node),
+    };
+  }
 
-function readAttributes(node: Node): Map<string, string> {
-  const attributes = new Map<string, string>();
-  const raw = node[":@"];
-  if (typeof raw !== "object" || raw === null) {
+  /** `""` for text/comment nodes, otherwise the single element key. */
+  static #elementTag(node: Node): string {
+    for (const key of Object.keys(node)) {
+      if (key !== ":@" && key !== "#text") {
+        return key;
+      }
+    }
+    return "";
+  }
+
+  static #childrenOf(node: Node): Node[] {
+    const value = node[SvgXmlReader.#elementTag(node)];
+    return Array.isArray(value) ? (value as Node[]) : [];
+  }
+
+  static #readAttributes(node: Node): Map<string, string> {
+    const attributes = new Map<string, string>();
+    const raw = node[":@"];
+    if (typeof raw !== "object" || raw === null) {
+      return attributes;
+    }
+    for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof value === "string" || typeof value === "number") {
+        attributes.set(name, String(value));
+      }
+    }
     return attributes;
   }
-  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof value === "string" || typeof value === "number") {
-      attributes.set(name, String(value));
+
+  static #textOf(node: Node): string {
+    const chunks: string[] = [];
+    for (const child of SvgXmlReader.#childrenOf(node)) {
+      const text = child["#text"];
+      if (typeof text === "string") {
+        chunks.push(text);
+      }
     }
+    return chunks.join("");
   }
-  return attributes;
-}
 
-function textOf(node: Node): string {
-  const chunks: string[] = [];
-  for (const child of childrenOf(node)) {
-    const text = child["#text"];
-    if (typeof text === "string") {
-      chunks.push(text);
+  /** `width` when present, otherwise the `index`-th component of `viewBox`. */
+  static #fromWidthOrViewBox(
+    size: string | undefined,
+    viewBox: string | undefined,
+    index: number,
+  ): number | null {
+    return SvgXmlReader.#numericOrNull(size) ?? SvgXmlReader.#viewBoxPart(viewBox, index);
+  }
+
+  static #numericOrNull(value: string | undefined): number | null {
+    if (value === undefined) {
+      return null;
     }
+    const numeric = Number.parseFloat(value);
+    return Number.isFinite(numeric) ? numeric : null;
   }
-  return chunks.join("");
-}
 
-function numericOrNull(value: string | undefined): number | null {
-  if (value === undefined) {
-    return null;
+  static #viewBoxPart(value: string | undefined, index: number): number | null {
+    if (value === undefined) {
+      return null;
+    }
+    const parts = value.trim().split(/[\s,]+/);
+    return SvgXmlReader.#numericOrNull(parts[index]);
   }
-  const numeric = Number.parseFloat(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
-function viewBoxPart(value: string | undefined, index: number): number | null {
-  if (value === undefined) {
-    return null;
-  }
-  const parts = value.trim().split(/[\s,]+/);
-  return numericOrNull(parts[index]);
 }

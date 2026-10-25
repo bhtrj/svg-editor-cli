@@ -1,5 +1,4 @@
 import type { Arguments } from "../shared/Arguments.js";
-import type { Shape } from "../domain/Shape.js";
 import { AbstractEditCommand } from "./AbstractEditCommand.js";
 import type { CommandContext } from "./CommandContext.js";
 
@@ -37,7 +36,7 @@ export class DeleteCommand extends AbstractEditCommand {
     const parent = shape.parent;
     this.#label = shape.label;
     this.#wasContainer = shape.isContainer;
-    this.#childCount = countDescendants(shape);
+    this.#childCount = shape.descendantCount();
     this.#parentLabel = parent?.containerLabel ?? "svg";
 
     parent?.removeChild(shape);
@@ -61,12 +60,4 @@ export class DeleteCommand extends AbstractEditCommand {
         : `${this.#label} deleted`,
     ];
   }
-}
-
-function countDescendants(shape: Shape): number {
-  let count = 0;
-  for (const child of shape.children) {
-    count += 1 + countDescendants(child);
-  }
-  return count;
 }

@@ -2,9 +2,6 @@ import { createInterface } from "node:readline";
 import { EditorError } from "../shared/EditorError.js";
 import type { CommandRunner } from "../app/CommandRunner.js";
 
-/** Written once at start-up, before the first prompt (§6). */
-export const BANNER = "svg-editor 0.1 — type 'help' for commands";
-
 /**
  * The REPL: reads one line, prints what the command produced, repeats.
  *
@@ -13,6 +10,9 @@ export const BANNER = "svg-editor 0.1 — type 'help' for commands";
  * undo bookkeeping) belongs to the layers underneath.
  */
 export class Repl {
+  /** Written once at start-up, before the first prompt (§6). */
+  static readonly BANNER = "svg-editor 0.1 — type 'help' for commands";
+
   constructor(
     private readonly runner: CommandRunner,
     private readonly write: (line: string) => void,
@@ -32,7 +32,7 @@ export class Repl {
   /** Interactive mode; resolves when stdin closes (Ctrl+D / Ctrl+Z). */
   async start(input: NodeJS.ReadableStream, output: NodeJS.WritableStream, prompt = "svg> "): Promise<void> {
     const rl = createInterface({ input, output, terminal: process.stdin.isTTY === true });
-    this.write(BANNER);
+    this.write(Repl.BANNER);
     this.write("");
 
     rl.setPrompt(prompt);

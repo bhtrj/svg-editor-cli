@@ -1,5 +1,6 @@
 import { EditorError } from "./EditorError.js";
-import type { Token } from "./Tokenizer.js";
+import { Numbers } from "./Numbers.js";
+import type { Token } from "./Token.js";
 
 /**
  * Cursor over the tokens that follow a command name.
@@ -61,19 +62,15 @@ export class Arguments {
   }
 
   number(): number {
-    const text = this.take().text.trim();
-    const value = Number(text);
-    if (text === "" || !Number.isFinite(value)) {
-      throw new EditorError(`invalid number: ${text}`);
-    }
-    return value;
+    return Numbers.parse(this.take().text);
   }
 
   /** A size or radius, which the model also requires to be > 0. */
   positiveNumber(): number {
-    const value = this.number();
+    const token = this.take().text;
+    const value = Numbers.parse(token);
     if (value <= 0) {
-      throw new EditorError(`value must be positive: ${value}`);
+      throw new EditorError(`value must be positive: ${token.trim()}`);
     }
     return value;
   }

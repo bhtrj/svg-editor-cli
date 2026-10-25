@@ -1,8 +1,9 @@
 import { EditorError } from "../shared/EditorError.js";
 import type { Arguments } from "../shared/Arguments.js";
+import type { Token } from "../shared/Token.js";
 import { AbstractEditCommand } from "./AbstractEditCommand.js";
 import type { CommandContext } from "./CommandContext.js";
-import { usageOf } from "./CommandSyntax.js";
+import { CommandSyntax } from "./CommandSyntax.js";
 
 /**
  * `create <type> <id> [params…] [in <containerId>]`
@@ -12,7 +13,7 @@ import { usageOf } from "./CommandSyntax.js";
  * shape type therefore never touches this class.
  */
 export class CreateCommand extends AbstractEditCommand {
-  static readonly usage = usageOf("create");
+  static readonly usage = CommandSyntax.usageOf("create");
 
   #label = "";
   #parentLabel = "";
@@ -37,7 +38,7 @@ export class CreateCommand extends AbstractEditCommand {
     }
 
     const parameters = args.rest();
-    const inIndex = findInClause(parameters);
+    const inIndex = CreateCommand.findInClause(parameters);
     let containerId: string | null = null;
     let actual = parameters;
 
@@ -68,6 +69,20 @@ export class CreateCommand extends AbstractEditCommand {
     }
 
     return new CreateCommand(context, type, values, containerId);
+  }
+
+  /**
+   * Position of an unquoted `in`, or -1.
+   * A quoted `"in"` is data (a text content), never the clause (§4.1).
+   */
+  static findInClause(tokens: readonly Token[]): number {
+    for (let index = tokens.length - 2; index >= 0; index -= 1) {
+      const token = tokens[index];
+      if (token !== undefined && !token.quoted && token.text === "in") {
+        return index;
+      }
+    }
+    return -1;
   }
 
   protected apply(): readonly string[] {
@@ -101,18 +116,4 @@ export class CreateCommand extends AbstractEditCommand {
       ? `${this.#label} created`
       : `${this.#label} created in ${this.#parentLabel}`;
   }
-}
-
-/**
- * Position of an unquoted `in`, or -1.
- * A quoted `"in"` is data (a text content), never the clause (§4.1).
- */
-function findInClause(tokens: readonly { readonly text: string; readonly quoted: boolean }[]): number {
-  for (let index = tokens.length - 2; index >= 0; index -= 1) {
-    const token = tokens[index];
-    if (token !== undefined && !token.quoted && token.text === "in") {
-      return index;
-    }
-  }
-  return -1;
 }

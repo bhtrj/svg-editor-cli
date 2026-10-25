@@ -4,7 +4,6 @@ import type { Shape } from "../domain/Shape.js";
 import { Group } from "../domain/Group.js";
 import { AbstractEditCommand } from "./AbstractEditCommand.js";
 import type { CommandContext } from "./CommandContext.js";
-import { documentOrder } from "./DocumentOrder.js";
 
 /**
  * `group <newGid> <id1> <id2>…` — collect existing shapes into a new container.
@@ -60,7 +59,7 @@ export class GroupCommand extends AbstractEditCommand {
       throw new EditorError(`no such shape: ${first.id}`);
     }
     const insertionPoint = parent.indexOf(first);
-    const ordered = sortMembers(document.walk(), members);
+    const ordered = document.sortInDocumentOrder(members);
 
     const group = new Group(this.#newId);
     for (const member of ordered) {
@@ -97,17 +96,3 @@ export class GroupCommand extends AbstractEditCommand {
     }
   }
 }
-
-/** Sorts members into depth-first document order, preserving z-order. */
-function sortMembers(order: Iterable<Shape>, members: readonly Shape[]): Shape[] {
-  const index = new Map<Shape, number>();
-  let position = 0;
-  for (const shape of order) {
-    index.set(shape, position);
-    position += 1;
-  }
-  return [...members].sort((left, right) => (index.get(left) ?? 0) - (index.get(right) ?? 0));
-}
-
-/** Exported for tests that assert document-order semantics. */
-export { documentOrder };

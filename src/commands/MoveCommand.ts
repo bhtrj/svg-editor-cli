@@ -1,5 +1,5 @@
 import type { Arguments } from "../shared/Arguments.js";
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { AbstractEditCommand } from "./AbstractEditCommand.js";
 import type { CommandContext } from "./CommandContext.js";
 
@@ -59,7 +59,7 @@ export class MoveCommand extends AbstractEditCommand {
   protected renderUndo(): readonly string[] {
     return [
       this.#isContainer
-        ? `${this.#label} moved back by (${formatNumber(-this.#dx)},${formatNumber(-this.#dy)})`
+        ? `${this.#label} moved back by (${Numbers.format(-this.#dx)},${Numbers.format(-this.#dy)})`
         : `${this.#label} moved back to ${this.#before}`,
     ];
   }
@@ -70,7 +70,7 @@ export class MoveCommand extends AbstractEditCommand {
 
   private movedMessage(): string {
     return this.#isContainer
-      ? `${this.#label} moved by (${formatNumber(this.#dx)},${formatNumber(this.#dy)})`
+      ? `${this.#label} moved by (${Numbers.format(this.#dx)},${Numbers.format(this.#dy)})`
       : `${this.#label} moved to ${this.#after}`;
   }
 }

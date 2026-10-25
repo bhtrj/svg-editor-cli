@@ -1,6 +1,5 @@
-import { EditorError } from "../shared/EditorError.js";
 import type { Arguments } from "../shared/Arguments.js";
-import { formatNumber } from "../shared/Numbers.js";
+import { Numbers } from "../shared/Numbers.js";
 import { AbstractEditCommand } from "./AbstractEditCommand.js";
 import type { CommandContext } from "./CommandContext.js";
 
@@ -31,11 +30,8 @@ export class ScaleCommand extends AbstractEditCommand {
 
   static fromArguments(args: Arguments, context: CommandContext): ScaleCommand {
     const id = args.identifier();
-    const factor = args.number();
+    const factor = Numbers.parsePositive(args.take().text, "scale factor");
     args.expectEnd();
-    if (!(factor > 0)) {
-      throw new EditorError("scale factor must be positive");
-    }
     return new ScaleCommand(context, id, factor);
   }
 
@@ -58,7 +54,7 @@ export class ScaleCommand extends AbstractEditCommand {
   protected renderUndo(): readonly string[] {
     return [
       this.#isContainer
-        ? `${this.#label} scaled back by 1/${formatNumber(this.#factor)}`
+        ? `${this.#label} scaled back by 1/${Numbers.format(this.#factor)}`
         : `${this.#label} scaled back to ${this.#before}`,
     ];
   }
@@ -69,7 +65,7 @@ export class ScaleCommand extends AbstractEditCommand {
 
   private scaledMessage(): string {
     return this.#isContainer
-      ? `${this.#label} scaled by ${formatNumber(this.#factor)}`
-      : `${this.#label} scaled to ${this.#after} (factor ${formatNumber(this.#factor)})`;
+      ? `${this.#label} scaled by ${Numbers.format(this.#factor)}`
+      : `${this.#label} scaled to ${this.#after} (factor ${Numbers.format(this.#factor)})`;
   }
 }
