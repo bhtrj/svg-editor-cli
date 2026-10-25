@@ -73,15 +73,16 @@ describe("read", () => {
     const editor = new TestEditor();
     editor.files.files.set("other.svg", OTHER_SVG);
     editor.run("read other.svg");
+    // Byte-for-byte the block printed in phase_cli_1.md §6.
     expect(editor.tree()).toEqual([
       "svg (400x300)",
-      "├── rect#rect1  x=0 y=0 w=400 h=300 fill=#ffffff",
-      "├── text#t1     (10,290) \"imported\"",
-      "├── circle#c1   cx=50 cy=50 r=10",
+      "├── rect#rect1     x=0 y=0 w=400 h=300 fill=#ffffff",
+      "├── text#t1        (10,290) \"imported\"",
+      "├── circle#c1      cx=50 cy=50 r=10",
       "├── g#g1",
       "│   ├── rect#r2    x=0 y=0 w=10 h=10",
       "│   └── circle#c2  cx=5 cy=5 r=2",
-      "└── ellipse#e1  cx=1 cy=2 rx=3 ry=4",
+      "└── ellipse#e1     cx=1 cy=2 rx=3 ry=4",
     ]);
   });
 
@@ -111,7 +112,7 @@ describe("read", () => {
       "svg (300x200)",
       "├── g#g1",
       "│   └── rect#r1  x=10 y=20 w=30 h=40 fill=red",
-      '└── text#t1  (5,6) "hello world"',
+      '└── text#t1      (5,6) "hello world"',
     ]);
   });
 

@@ -1,98 +1,136 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { TestEditor } from "./support/TestEditor.js";
 
 /**
- * Golden replays of the two transcripts in the assignment (§6 and §6.1).
+ * Golden replays of the sessions in the assignment (`phase_cli_1.md`).
  *
- * These are the acceptance criterion with the least interpretation: if the
- * literal session from the brief produces the literal output, the CLI behaves as
- * specified. Comments (`#`) and blank lines are part of the scripts on purpose —
- * the brief promises they can be stored and replayed.
+ * The expected output is **extracted from the brief itself** rather than copied
+ * by hand, so this file cannot drift from the acceptance criterion it claims to
+ * check: if the brief's transcript changes, these tests change with it.
+ *
+ * Two documented exceptions:
+ *  - §6.1's tree is hand-aligned and internally inconsistent (two rows of the
+ *    same sibling group start their summary at columns 29 and 31), so its tree is
+ *    compared modulo whitespace — and that inconsistency is asserted below so the
+ *    reason is recorded rather than assumed;
+ *  - §6.1 version B uses `box`, which §4.4 places in the plugin phase, so it is
+ *    asserted to be rejected by this phase's kernel.
  */
 
-const SECTION_6 = `
-init 800 600
-create rect bg 0 0 800 600 #ffffff
-create text title 20 40 "My Diagram"
-create circle c1 100 100 20 red
-create rect box 200 80 60 60 #3366ff
+const SPEC = resolve(dirname(fileURLToPath(import.meta.url)), "../phase_cli_1.md");
 
-group markers c1 box
-tree
-move c1 30 0
-undo
-redo
-set title text "My Diagram v2"
-undo
-group bad c1 markers
-delete box
-undo
-save demo.svg
-undo
-`;
+/** One fenced block of the brief, as raw lines. */
+function specBlocks(): readonly (readonly string[])[] {
+  const lines = readFileSync(SPEC, "utf8").split(/\r?\n/);
+  const blocks: string[][] = [];
+  let current: string[] | null = null;
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      if (current !== null) {
+        blocks.push(current);
+        current = null;
+      } else {
+        current = [];
+      }
+      continue;
+    }
+    current?.push(line);
+  }
+  return blocks;
+}
 
-const SECTION_6_1 = `
-init 800 600
+/** The first block containing every marker, or a failure that names the markers. */
+function blockWith(...markers: readonly string[]): readonly string[] {
+  const block = specBlocks().find((candidate) =>
+    markers.every((marker) => candidate.some((line) => line.includes(marker))),
+  );
+  if (block === undefined) {
+    throw new Error(`phase_cli_1.md no longer contains a block with: ${markers.join(", ")}`);
+  }
+  return block;
+}
 
-# 先建容器骨架，再往里放图形：每一步都显式表达归属
-create g flowchart
-create g node1 in flowchart
-create rect start 120 100 160 60 #4a90d9 in node1
-create text start-label 155 135 "开始" in node1
+/** The commands of a session block, in order, without the `svg> ` prompt. */
+function commandsOf(block: readonly string[]): string[] {
+  return block.filter((line) => line.startsWith("svg> ")).map((line) => line.slice(5));
+}
 
-create g node2 in flowchart
-create rect process 520 100 160 60 #f5a623 in node2
-create text process-label 545 135 "处理数据" in node2
+/** The output lines the brief shows for those commands. */
+function expectedOutput(block: readonly string[]): string[] {
+  const output: string[] = [];
+  let sawCommand = false;
+  for (const line of block) {
+    if (
+      line.trim() === "" ||
+      line.startsWith("$ ") ||
+      line === "svg-editor 0.1 — type 'help' for commands"
+    ) {
+      continue;
+    }
+    if (line.startsWith("svg> ")) {
+      sawCommand = true;
+      continue;
+    }
+    if (line.startsWith("#") || !sawCommand) {
+      continue;
+    }
+    output.push(line);
+  }
+  return output;
+}
 
-# 连接线挂在流程图容器下
-create line arrow1 280 130 520 130 black in flowchart
+const OTHER_SVG = readFileSync(resolve(dirname(SPEC), "examples/other.svg"), "utf8");
 
-tree
+/** A harness whose in-memory file system already holds the brief's `other.svg`. */
+function editorWithOtherSvg(): TestEditor {
+  const editor = new TestEditor();
+  editor.files.files.set("other.svg", OTHER_SVG);
+  return editor;
+}
 
-# 容器移动：整个节点 2 下移 100，文字随行（容器的价值所在）
-move node2 0 100
-undo
+/** Collapses runs of spaces, so two hand-aligned trees compare by content. */
+function withoutPadding(lines: readonly string[]): string[] {
+  return lines.map((line) => line.replace(/ {2,}/g, " "));
+}
 
-# 改节点内容：只动组内 text
-set process-label text "处理数据 v2"
+/** Where each summarised row starts its summary; container rows are skipped. */
+const ROW_WITH_SUMMARY = /^(?<prefix>[│ ]*(?:├── |└── ))(?<label>\S+)(?<pad> +)(?<rest>\S)/;
 
-save flowchart.svg
-`;
+function summaryColumns(lines: readonly string[]): number[] {
+  const columns: number[] = [];
+  for (const line of lines) {
+    const match = ROW_WITH_SUMMARY.exec(line);
+    if (match?.groups === undefined) {
+      continue;
+    }
+    columns.push(
+      match.groups["prefix"]!.length + match.groups["label"]!.length + match.groups["pad"]!.length,
+    );
+  }
+  return columns;
+}
 
-describe("§6 transcript", () => {
-  it("matches the documented session line for line", () => {
-    const editor = new TestEditor();
-    const output = editor.runScript(SECTION_6);
+/** The tree lines of a session's output, starting at the root row. */
+function treeLines(lines: readonly string[]): string[] {
+  const start = lines.indexOf("svg (800x600)");
+  return start < 0 ? [] : lines.slice(start);
+}
 
-    expect(output).toEqual([
-      "canvas 800x600 created",
-      "rect#bg created",
-      "text#title created",
-      "circle#c1 created",
-      "rect#box created",
-      "g#markers created with 2 children",
-      "svg (800x600)",
-      "├── rect#bg     x=0 y=0 w=800 h=600 fill=#ffffff",
-      "├── text#title  (20,40) \"My Diagram\"",
-      "└── g#markers",
-      "    ├── circle#c1  cx=100 cy=100 r=20 fill=red",
-      "    └── rect#box   x=200 y=80 w=60 h=60 fill=#3366ff",
-      "circle#c1 moved to (130,100)",
-      "circle#c1 moved back to (100,100)",
-      "circle#c1 moved to (130,100)",
-      'text#title updated: text="My Diagram v2"',
-      'text#title updated: text="My Diagram"',
-      "error: cannot group a container into its own descendant: markers",
-      "rect#box deleted",
-      "rect#box restored into g#markers",
-      "saved to demo.svg (5 elements)",
-      "error: undo not allowed after io command",
-    ]);
+describe("§6 session — byte-for-byte against the brief", () => {
+  const block = blockWith("$ npm run cli", "svg> group markers c1 box", "svg> save demo.svg");
+
+  it("replays every command with the documented output", () => {
+    const editor = editorWithOtherSvg();
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    expect(output).toEqual(expectedOutput(block));
   });
 
-  it("writes the documented SVG skeleton", () => {
-    const editor = new TestEditor();
-    editor.runScript(SECTION_6);
+  it("writes the documented shape count and keeps the tree in the file", () => {
+    const editor = editorWithOtherSvg();
+    editor.runScript(commandsOf(block).join("\n"));
     const svg = editor.files.files.get("demo.svg") ?? "";
     expect(svg).toContain('<g id="markers">');
     expect(svg).toContain('<rect id="bg" x="0" y="0" width="800" height="600" fill="#ffffff"/>');
@@ -100,37 +138,78 @@ describe("§6 transcript", () => {
   });
 });
 
-describe("§6.1 two-node flowchart", () => {
-  it("produces the documented tree", () => {
-    const editor = new TestEditor();
-    const output = editor.runScript(SECTION_6_1);
+describe("§6 read example — covered inside the §6 session, asserted explicitly here", () => {
+  const block = blockWith("svg> read other.svg", "warning: assigned id rect1 to unnamed <rect>");
 
-    expect(output).toContain("g#node1 created in g#flowchart");
-    expect(output).toContain("line#arrow1 created in g#flowchart");
-    expect(output).toContain("g#node2 moved by (0,100)");
-    expect(output).toContain("g#node2 moved back by (0,-100)");
-    expect(output).toContain('text#process-label updated: text="处理数据 v2"');
-    expect(output).toContain("saved to flowchart.svg (8 elements)");
-
-    expect(editor.tree()).toEqual([
-      "svg (800x600)",
-      "└── g#flowchart",
-      "    ├── g#node1",
-      "    │   ├── rect#start        x=120 y=100 w=160 h=60 fill=#4a90d9",
-      "    │   └── text#start-label  (155,135) \"开始\"",
-      "    ├── g#node2",
-      "    │   ├── rect#process        x=520 y=100 w=160 h=60 fill=#f5a623",
-      "    │   └── text#process-label  (545,135) \"处理数据 v2\"",
-      "    └── line#arrow1  (280,130) -> (520,130)",
-    ]);
+  it("prints the auto-assigned id immediately before the summary line", () => {
+    const editor = editorWithOtherSvg();
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    const summary = output.indexOf("read other.svg (7 elements)");
+    expect(summary).toBeGreaterThan(0);
+    expect(output[summary - 1]).toBe("warning: assigned id rect1 to unnamed <rect>");
   });
 
-  it("saves eight payload elements plus the svg root", () => {
+  it("shows the auto-assigned id in the tree it prints", () => {
+    const editor = editorWithOtherSvg();
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    expect(output).toContain("├── rect#rect1     x=0 y=0 w=400 h=300 fill=#ffffff");
+  });
+});
+
+describe("§6.1 two-node flowchart", () => {
+  const block = blockWith("svg> create g flowchart", "svg> save flowchart.svg");
+
+  it("replays every command with the documented output (tree compared modulo padding)", () => {
     const editor = new TestEditor();
-    editor.runScript(SECTION_6_1);
-    const svg = editor.files.files.get("flowchart.svg") ?? "";
-    const elements = svg.match(/<(rect|circle|ellipse|line|text|g) /g) ?? [];
-    expect(elements).toHaveLength(8);
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    const expected = expectedOutput(block);
+
+    // Everything except the tree is byte-for-byte; the tree's own block in the
+    // brief mixes two columns inside one sibling group, so it is compared by
+    // content and a separate test asserts our single column.
+    expect(withoutPadding(treeLines(output))).toEqual(withoutPadding(treeLines(expected)));
+    expect(output.slice(0, output.indexOf("svg (800x600)"))).toEqual(
+      expected.slice(0, expected.indexOf("svg (800x600)")),
+    );
+  });
+
+  it("builds the documented structure, modulo the brief's hand-aligned padding", () => {
+    const editor = new TestEditor();
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    expect(withoutPadding(treeLines(output))).toEqual(
+      withoutPadding(treeLines(expectedOutput(block))),
+    );
+  });
+
+  it("uses one summary column for the whole tree", () => {
+    const editor = new TestEditor();
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    expect(new Set(summaryColumns(treeLines(output))).size).toBe(1);
+  });
+
+  it("records that the brief's own §6.1 tree is not self-consistent", () => {
+    // Two rows of one sibling group start at different columns in the brief
+    // (rect#process at 29, text#process-label at 31), which is why this one tree
+    // is compared modulo whitespace instead of byte-for-byte.
+    expect(new Set(summaryColumns(treeLines(expectedOutput(block)))).size).toBeGreaterThan(1);
+  });
+});
+
+describe("§6.1 version B (box) — out of scope for this phase", () => {
+  const block = blockWith("svg> create box n1", "svg> save flowchart-box.svg");
+
+  it("rejects the plugin type with the documented message", () => {
+    const editor = new TestEditor();
+    const output = editor.runScript(commandsOf(block).join("\n"));
+    const rejections = output.filter((line) => line.startsWith("error:"));
+    // The two `create box` calls open the session; every later command that
+    // references n1/n2 then fails, because nothing was created.
+    expect(rejections.slice(0, 2)).toEqual([
+      "error: unknown shape type: box (is the plugin loaded?)",
+      "error: unknown shape type: box (is the plugin loaded?)",
+    ]);
+    // `create line` still works (it is a kernel type); no box is ever created.
+    expect(output.some((line) => line.startsWith("box#"))).toBe(false);
   });
 });
 
