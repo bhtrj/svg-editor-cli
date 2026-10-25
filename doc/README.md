@@ -12,7 +12,7 @@
 ```text
 src/
 ├── shared/         零业务知识的机械功能（每项一个静态工具类）：
-│                   EditorError、Numbers、Xml、Tokenizer/Token、Arguments、FileGateway 端口
+│                   EditorError、Numbers、Plural、Xml、Tokenizer/Token、Arguments、FileGateway 端口
 ├── domain/         图形模型（本项目的核心，只依赖 shared）
 │   ├── Shape        抽象基类：id、绘制属性、父链接、set 白名单、moveBy/scaleBy
 │   ├── Group        Composite：既是 Shape 又是容器
@@ -35,7 +35,7 @@ src/
 
 | 模块 | 文件数 | 职责 | 单独存在的理由 |
 |---|---|---|---|
-| `shared` | 7 | 与业务无关的机械功能 | 这些功能被上下三层共用；放进任一层都会制造反向依赖 |
+| `shared` | 8 | 与业务无关的机械功能 | 这些功能被上下三层共用；放进任一层都会制造反向依赖 |
 | `domain` | 18 | 图形是什么、能做什么（几何、层级、属性白名单、序列化形状） | 全项目的依赖汇点；必须能在没有 fs / 没有 console 的情况下被测试与复用 |
 | `commands` | 25 | 用户意图是什么，以及如何撤销 | undo/redo 是**变更语义**，不是模型状态；放进 domain 会让模型背负编辑历史 |
 | `presentation` | 3 | 文本视图（`tree` / `show`） | 渲染只依赖模型；放进 `commands` 会让展示逻辑与命令解析混在一起 |
@@ -423,6 +423,16 @@ package "shared" {
 
 **顺带**：测试从“手抄期望输出”改为**从 `phase_cli_1.md` 提取期望输出**，因此这类偏差以后会直接以“题面 vs 实现”的差异形式暴露，而不是被我自己的抄写掩盖。
 
+### 2.13 逐条验收时查出的两处措辞缺陷：`1 children`
+
+**怎么发现**：为了逐条核对 §3/§4 的语义，我把边界用例（单成员 `group`、单个子孙的 `delete`、一子容器的 `ungroup`、redo 路径）编成脚本跑了一遍，输出里出现 `g#solo created with 1 child` 的前身——`1 children`。
+
+**根因**：单复数在三个调用点各写了一遍，于是各自漂移：`GroupCommand`（3 处）与 `UngroupCommand`（3 处）恒定用复数；`DeleteCommand` 的 `apply` 用了三元式、`renderRedo` 却漏了，导致“删除含 1 个子孙的容器”在第一次与 redo 时给出不同措辞（`1 descendant` / `1 descendants`）。
+
+**修正**：新增 `shared/Plural.ts`（`Plural.child` / `Plural.descendant`），三处调用点统一改用它；redo 与首次输出现在走同一条路径。补了 3 条测试把单数形式固定住（`group` 的 create/undo/redo、`delete` 的 redo 路径、`ungroup`/`regroup`）。
+
+**为什么不改措辞只改数**：`ungroup` 与 `group` 的 undo 文案（`ungrouped (N children)` 与 `ungrouped (N children restored)`）是两种合理的叙述角度，题目未规定；改它只会增加与题面 transcript 不一致的风险。语法错误是缺陷，措辞风格不是。
+
 ---
 
 ## 3. 一致性自查
@@ -433,7 +443,7 @@ package "shared" {
 
 | 方案中的模块 | 实际目录 | 文件数 | 状态 |
 |---|---|---|---|
-| `shared` | `src/shared/` | 7 | 与 §1.1 一致 |
+| `shared` | `src/shared/` | 8 | 与 §1.1 一致 |
 | `domain`（Shape/Group/叶子/SvgDocument/Factory/Memento） | `src/domain/` | 18 | 一致 |
 | `commands`（命令类 + History + Registry + Syntax） | `src/commands/` | 25 | 一致（本轮由 20 → 25：拆出 11 个单类文件、删除 4 个合并文件） |
 | `presentation`（Renderer + TreeRow） | `src/presentation/` | 3 | 一致 |
@@ -569,14 +579,14 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 | REPL | `tests/cli/Repl.test.ts` | 注释/空行、CRLF、`error:` 翻译、Banner |
 | 端到端 | `tests/transcripts.test.ts` | 题目 transcript 回放（期望值从题面解析） |
 
-测试总数 **121**，全部通过（13 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
+测试总数 **124**，全部通过（13 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
 
 ### 4.3 静态保障
 
 ```bash
 npm run typecheck     # tsc --noEmit，strict + noUncheckedIndexedAccess
 npm run build         # tsc -p tsconfig.build.json，产出 dist/
-npm test              # 121 tests
+npm test              # 124 tests
 npm run check         # 前两者合一
 ```
 

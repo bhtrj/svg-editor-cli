@@ -1,3 +1,4 @@
+import { Plural } from "../shared/Plural.js";
 import type { Arguments } from "../shared/Arguments.js";
 import { AbstractEditCommand } from "./AbstractEditCommand.js";
 import type { CommandContext } from "./CommandContext.js";
@@ -44,7 +45,7 @@ export class DeleteCommand extends AbstractEditCommand {
 
     return [
       this.#wasContainer && this.#childCount > 0
-        ? `${this.#label} deleted (with ${this.#childCount} descendant${this.#childCount === 1 ? "" : "s"})`
+        ? `${this.#label} deleted (with ${Plural.descendant(this.#childCount)})`
         : `${this.#label} deleted`,
     ];
   }
@@ -56,7 +57,7 @@ export class DeleteCommand extends AbstractEditCommand {
   protected renderRedo(): readonly string[] {
     return [
       this.#wasContainer && this.#childCount > 0
-        ? `${this.#label} deleted (with ${this.#childCount} descendants)`
+        ? `${this.#label} deleted (with ${Plural.descendant(this.#childCount)})`
         : `${this.#label} deleted`,
     ];
   }

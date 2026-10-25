@@ -1,4 +1,5 @@
 import { EditorError } from "../shared/EditorError.js";
+import { Plural } from "../shared/Plural.js";
 import type { Arguments } from "../shared/Arguments.js";
 import type { Shape } from "../domain/Shape.js";
 import { Group } from "../domain/Group.js";
@@ -71,15 +72,15 @@ export class GroupCommand extends AbstractEditCommand {
     }
 
     this.#memberCount = ordered.length;
-    return [`g#${this.#newId} created with ${this.#memberCount} children`];
+    return [`g#${this.#newId} created with ${Plural.child(this.#memberCount)}`];
   }
 
   protected renderUndo(): readonly string[] {
-    return [`g#${this.#newId} ungrouped (${this.#memberCount} children restored)`];
+    return [`g#${this.#newId} ungrouped (${Plural.child(this.#memberCount)} restored)`];
   }
 
   protected renderRedo(): readonly string[] {
-    return [`g#${this.#newId} created with ${this.#memberCount} children`];
+    return [`g#${this.#newId} created with ${Plural.child(this.#memberCount)}`];
   }
 
   /** Rejects `group g c1 markers` when `markers` contains `c1`. */

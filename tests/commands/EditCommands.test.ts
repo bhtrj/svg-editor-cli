@@ -124,6 +124,17 @@ describe("delete", () => {
     expect(editor.run("delete g1")).toEqual(["g#g1 deleted (with 2 descendants)"]);
   });
 
+  it("uses the singular for one descendant, in the redo path too", () => {
+    const editor = editorWithCanvas();
+    editor.runScript(`
+      create g g1
+      create rect r1 0 0 10 10 in g1
+    `);
+    expect(editor.run("delete g1")).toEqual(["g#g1 deleted (with 1 descendant)"]);
+    expect(editor.run("undo")).toEqual(["g#g1 restored into svg"]);
+    expect(editor.run("redo")).toEqual(["g#g1 deleted (with 1 descendant)"]);
+  });
+
   it("rejects an unknown id", () => {
     const editor = editorWithCanvas();
     expect(editor.run("delete r9")).toEqual(["error: no such shape: r9"]);

@@ -14,7 +14,7 @@ npm run cli                  # 交互式 REPL
 npm run demo                 # 回放 scripts/demo.cli（§6 节会话）
 npm run flowchart            # 回放 scripts/flowchart.cli（§6.1 节会话）
 npx tsx src/cli/main.ts --script scripts/read.cli   # 读入外部 SVG
-npm test                     # 121 个测试（含架构规则）
+npm test                     # 124 个测试（含架构规则）
 npm run typecheck            # tsc --noEmit
 npm run check                # typecheck + test
 ```
@@ -45,14 +45,14 @@ saved to examples/out.svg (2 elements)
 
 | 目录 | 内容 |
 |---|---|
-| `src/shared/` | 零业务知识的工具类与端口：`EditorError`、`Numbers`、`Xml`、`Tokenizer`、`Arguments`、`FileGateway` |
+| `src/shared/` | 零业务知识的工具类与端口：`EditorError`、`Numbers`、`Plural`、`Xml`、`Tokenizer`、`Arguments`、`FileGateway` |
 | `src/domain/` | 图形模型：`Shape` 抽象、`Group`（Composite）、五种叶子、`SvgDocument`、`ShapeFactory`、`DocumentMemento` |
 | `src/commands/` | Command 对象：**每条命令一个类一个文件**，含 `undo`/`redo`；`CommandRegistry` 按名分派 |
 | `src/presentation/` | `tree` / `show` 的文本渲染 |
 | `src/io/` | SVG 解析/序列化（`fast-xml-parser`，保序）与 `node:fs` 适配器（唯一接触文件系统的地方） |
 | `src/app/` | 会话与用例编排：`EditorSession`、`CommandRunner` |
 | `src/cli/` | REPL、组合根（`CompositionRoot`）与进程入口（`main`） |
-| `tests/` | 架构规则 + 单元 + 命令级 + 进程入口 + transcript 回放测试（121 条） |
+| `tests/` | 架构规则 + 单元 + 命令级 + 进程入口 + transcript 回放测试（124 条） |
 | `scripts/` | 可回放的 `.cli` 会话脚本 |
 | `examples/` | 由脚本生成的 SVG 示例 |
 

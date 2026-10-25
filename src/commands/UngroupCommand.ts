@@ -1,4 +1,5 @@
 import { EditorError } from "../shared/EditorError.js";
+import { Plural } from "../shared/Plural.js";
 import type { Arguments } from "../shared/Arguments.js";
 import { AbstractEditCommand } from "./AbstractEditCommand.js";
 import type { CommandContext } from "./CommandContext.js";
@@ -49,14 +50,14 @@ export class UngroupCommand extends AbstractEditCommand {
     });
 
     this.#childCount = children.length;
-    return [`g#${this.#id} ungrouped (${this.#childCount} children)`];
+    return [`g#${this.#id} ungrouped (${Plural.child(this.#childCount)})`];
   }
 
   protected renderUndo(): readonly string[] {
-    return [`g#${this.#id} regrouped (${this.#childCount} children)`];
+    return [`g#${this.#id} regrouped (${Plural.child(this.#childCount)})`];
   }
 
   protected renderRedo(): readonly string[] {
-    return [`g#${this.#id} ungrouped (${this.#childCount} children)`];
+    return [`g#${this.#id} ungrouped (${Plural.child(this.#childCount)})`];
   }
 }

@@ -46,6 +46,14 @@ describe("group", () => {
     expect(editor.run("group g1 c1")).toEqual(["error: id already exists: g1"]);
     expect(editor.run("group g2 c1 nope")).toEqual(["error: no such shape: nope"]);
   });
+
+  it("uses the singular for a one-member group", () => {
+    const editor = editorWithCanvas();
+    editor.run("create circle c1 0 0 5");
+    expect(editor.run("group solo c1")).toEqual(["g#solo created with 1 child"]);
+    expect(editor.run("undo")).toEqual(["g#solo ungrouped (1 child restored)"]);
+    expect(editor.run("redo")).toEqual(["g#solo created with 1 child"]);
+  });
 });
 
 describe("ungroup", () => {
@@ -64,6 +72,17 @@ describe("ungroup", () => {
       "    ├── circle#c1  cx=0 cy=0 r=5",
       "    └── rect#r1    x=10 y=10 w=20 h=20",
     ]);
+  });
+
+  it("uses the singular when a one-child container is dissolved", () => {
+    const editor = editorWithCanvas();
+    editor.runScript(`
+      create g outer
+      create g inner in outer
+      create circle c1 0 0 5 in inner
+    `);
+    expect(editor.run("ungroup inner")).toEqual(["g#inner ungrouped (1 child)"]);
+    expect(editor.run("undo")).toEqual(["g#inner regrouped (1 child)"]);
   });
 
   it("rejects a top-level container", () => {
