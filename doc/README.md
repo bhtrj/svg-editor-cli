@@ -336,9 +336,9 @@ package "shared" {
 
 **背景**：中途我意识到 `Line` 在 `tree` 里显示成 `x1=280 y1=130 x2=520 y2=130`，而题目 §6.1 要的是 `(280,130) -> (520,130)`；`Text` 同理要 `(155,135) "开始"`。
 
-**做法**：先给 `summary()` 加多态覆写（`Shape.summary()` 默认拼几何，`Line`/`Text` 覆写），再跑 `tests/transcripts.test.ts`——它逐行比对题目 §6 与 §6.1 的完整输出。这一步把“我觉得像”变成了“逐字符相等”。
+**做法**：先给 `summary()` 加多态覆写（`Shape.summary()` 默认拼几何，`Line`/`Text` 覆写），再跑 `tests/transcripts.test.ts`。这一步把“我觉得像”变成了可判定的比较——而且这个测试后来被改成**直接从 `phase_cli_1.md` 里提取期望输出**，不再手抄，所以它不会随我的实现漂移。
 
-**结果**：两份 transcript 的每一行（包括 `├──`/`└──`/`│` 前缀与空格对齐）都与题目一致。这条测试后来成了整个项目最有价值的一条：任何改动只要破坏输出格式，它立刻红。
+**结果（第 2 轮重新测量后修正）**：题目 §6 的 32 行输出**逐字节一致**（含注释行与 `read other.svg` 的树）；`read` 示例的树按列 19 对齐，也与题目一致。但 §6.1 的树**无法**逐字节匹配：题目该块自身不自洽——同一个兄弟组里 `rect#process` 的摘要从第 29 列开始、`text#process-label` 从第 31 列开始（用脚本逐行量过）。所以 §6.1 的树按“忽略连续空格”比较，同时用一条断言把“题目该块不自洽”这件事固定下来。详见 §2.12。
 
 ### 2.8 范式层违规：一个文件塞了多个类
 
@@ -388,7 +388,7 @@ package "shared" {
 
 **问题**：`import.meta.url` 在模块化之后指向 **`CompositionRoot.ts`**，而 `argv[1]` 是 **`main.ts`**——两者永不相等，于是 `start()` 直接返回。表现是：`npm run demo` **完全没有输出，退出码却是 0**。这是最阴险的一类回归（无报错、无输出、成功退出）。
 
-**怎么发现**：重构后跑 `npm run demo` 做端到端验证，发现 stdout 为空。若只看 `npm test`（116 条全绿）就会漏掉——因为测试直接构造 `Repl`/`Session`，不走进程入口。
+**怎么发现**：重构后跑 `npm run demo` 做端到端验证，发现 stdout 为空。若只看 `npm test`（当时 116 条全绿）就会漏掉——因为测试直接构造 `Repl`/`Session`，不走进程入口。
 
 **修正**：删掉这个脆弱的自检。入口文件本来就**没有**任何模块 import 它（测试用 `CompositionRoot`），所以 `main.ts` 顶层无条件调用 `CompositionRoot.start()` 即可；同时补了 `tests/cli/CompositionRoot.test.ts`，用临时目录 + `--script` 真正走一遍组合根（含“脚本不存在 → 退出码 1 + stderr 一行错误”），把这条路径纳入 CI。
 
@@ -403,6 +403,25 @@ package "shared" {
 2. 把 `presentation` 明确画进层次（在 `domain` 之上、`commands`/`io` 之下），文档 §1.3 表格与 PlantUML 同步更新，并写明理由（渲染无副作用、不进 `commands` 以免展示逻辑与命令解析混合）。
 
 **这件事的价值**：它把“文档说的”和“代码做的”强制对齐——如果我只写散文，这个不一致会一直留在提交里。
+
+### 2.12 我上一轮对 tree 对齐的判断是错的（重新测量后修正）
+
+**上一轮的结论**（写进了旧版 §2.7）：题目 transcript 里的空格是“手写且不一致”的，无法逐字节匹配，因此 `tree` 采用“逐兄弟组对齐”。
+
+**怎么发现它错了**：这轮我把题面里每个 tree 块**逐行量了一遍**（前缀长度、标签长度、摘要起始列），得到：
+
+| tree 块 | 摘要起始列 |
+|---|---|
+| §6 主会话 | 19, 19, 19, 19（含嵌套层） |
+| §6 `read other.svg` | 19, 19, 19, 19, 19, 19 |
+| §6.1 两节点流程图 | **29, 29, 29, 31, 29** |
+| §6.1 版本 B（box） | 29, 29, 29, 29, 30, 30, 29 |
+
+结论分两半：§6 与 `read` 两块是**严格一致的列 19**（按“全树最宽 `prefix+label` 再 +2”正好得到 19），我上一轮的“逐兄弟组”规则在这些块上反而给出列 16，与题目不符；只有 §6.1 的树是手写对齐、且**自家块内不自洽**（同一兄弟组 29 与 31 并存）。
+
+**修正**：`TreeRenderer` 改成**全树一列**——取所有带摘要的行的 `prefix+label` 最大值再加 2 个空格，越界的行至少留 1 个空格（`TreeRow.format(column)`）。结果：§6 与 `read` 两块**逐字节**与题目一致；§6.1 输出为统一列 32（题目是 29/31），内容一致、仅缩进不同。
+
+**顺带**：测试从“手抄期望输出”改为**从 `phase_cli_1.md` 提取期望输出**，因此这类偏差以后会直接以“题面 vs 实现”的差异形式暴露，而不是被我自己的抄写掩盖。
 
 ---
 
@@ -529,12 +548,12 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 
 ### 4.1 功能完整性：以题目自带的 transcript 为准
 
-最有力的证据是 `tests/transcripts.test.ts`：
-- 题目 §6 的**整段会话**（含注释行、空行）原样回放，输出**逐行全等**断言；
-- 题目 §6.1 的流程图会话同样回放，`tree` 的输出与题目给出的树**逐字符**一致；
-- §6 的 `other.svg` 导入用例，包括 `warning:` 行与补出的 id `rect1`。
+最有力的证据是 `tests/transcripts.test.ts`，它的期望输出**从 `phase_cli_1.md` 里解析出来**，不是手抄的：
+- 题目 §6 的**整段会话**（含注释行、`read other.svg` 与树）原样回放，32 行输出**逐字节全等**断言；
+- 题目 §6.1 的流程图会话同样回放：除 `tree` 的缩进外逐字节全等，`tree` 与题目给出的树**内容一致**（忽略连续空格比较），并另有一条断言把“题目该块的缩进自身不自洽（同组内 29 与 31 并存）”固定下来，见 §2.12；
+- §6.1 版本 B（`box`）断言为**被内核拒绝**：这是 §4.4 划定的插件化阶段边界，不是缺陷。
 
-这两条测试的意义在于：它们不是“我设计的测试”，而是**题目的验收样例**。任何输出格式的回退（空格、树形前缀、文案措辞）都会立刻失败。
+这些测试的意义在于：它们不是“我设计的测试”，而是**题目的验收样例**，且期望值来源就是题面本身。任何输出格式的回退（空格、树形前缀、文案措辞）都会立刻失败。
 
 ### 4.2 分层测试
 
@@ -548,16 +567,16 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 | IO | `tests/io/FileCommands.test.ts` | round-trip、缺 id 警告、viewBox 推导、转义 |
 | 进程入口 | `tests/cli/CompositionRoot.test.ts` | `--script` 真实落盘、缺文件退出码 |
 | REPL | `tests/cli/Repl.test.ts` | 注释/空行、CRLF、`error:` 翻译、Banner |
-| 端到端 | `tests/transcripts.test.ts` | 题目 transcript 逐行全等 |
+| 端到端 | `tests/transcripts.test.ts` | 题目 transcript 回放（期望值从题面解析） |
 
-测试总数 **116**，全部通过（13 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
+测试总数 **121**，全部通过（13 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
 
 ### 4.3 静态保障
 
 ```bash
 npm run typecheck     # tsc --noEmit，strict + noUncheckedIndexedAccess
 npm run build         # tsc -p tsconfig.build.json，产出 dist/
-npm test              # 116 tests
+npm test              # 121 tests
 npm run check         # 前两者合一
 ```
 
@@ -585,4 +604,5 @@ npm run check         # 前两者合一
 | 超大文档的 undo 内存 | 整树快照 | 见 §1.4 ③ 的权衡说明 |
 | 导入文件里的 `transform` | 属性被完整保留，但 `move`/`scale` 只改本地坐标，不会**合成**变换 | 题目第 3 节的命令从不产生 `transform`；要做变换合成需要矩阵栈，属第二阶段（见 §1.4 ②） |
 | `main.ts` 不声明类 | 架构测试对它豁免“文件名 = 类名” | 它是 bin 入口（`#!/usr/bin/env node` + 一次调用），不承载任何逻辑；逻辑都在 `CompositionRoot` |
+| 题目 §6.1 的 `tree` 缩进 | 内容一致，缩进不同（我们统一列 32，题面在同一兄弟组里混用 29 与 31） | 题面该块自身不自洽，不存在能同时满足它的确定性规则；§6 与 `read` 两块已逐字节一致，见 §2.12 |
 
