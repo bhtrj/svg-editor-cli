@@ -302,7 +302,19 @@ cli  →  app  →  commands  →  domain
 1. `GroupCommand` 把**所有**校验前置到任何 detach 之前；
 2. `AbstractEditCommand.execute()` 在 `apply()` 抛错时用 `before` 快照回滚。这样即使将来某条命令又忘了前置校验，也不会留下半截状态。
 
-### 2.6 测试基线建起来之后，才敢改动架构
+### 2.6 Memento 顺手把画布尺寸也存了 → `undo` 会缩回画布
+
+**AI 第一版**：`DocumentMemento` 抓取了 `width` / `height` 与图形树，`restore()` 里一并 `resize`。
+
+**问题**：`canvas 400 300` 修改尺寸之后，只要再执行一条编辑命令（解锁 undo），随后 `undo` 就会把**画布尺寸**也还原成编辑前的值。用户看到的是“我撤销了一次移动，结果画布缩回去了”。题目 §3 把 `canvas` 改尺寸归为**文档类**命令，它的效果本就不该被编辑命令的撤销拖走。
+
+**怎么发现**：写完主流程后我逐条核对“文档类命令的副作用是否只受文档类语义控制”，构造了 `create → canvas 400 300 → create → undo` 这条路径；当时 `canvas` 报告 `800x600`，与刚设定的 `400x300` 不符。
+
+**修正**：Memento 的职责收窄为**只快照图形树**，画布尺寸不进快照。新增 `tests/commands/DocumentBoundary.test.ts` 三条用例锁住这个边界（含“resize 后 undo 三次画布仍是新尺寸”“init 清空历史”“read 不继承旧 sourcePath”）。
+
+**顺带修掉的**：`read` 之后 `save`（无参数）原本会沿用**上一个**文档的路径，可能覆盖用户没打算覆盖的文件。现在 `init` / `read` 都会重置 `sourcePath`。
+
+### 2.7 测试基线建起来之后，才敢改动架构
 
 **背景**：中途我意识到 `Line` 在 `tree` 里显示成 `x1=280 y1=130 x2=520 y2=130`，而题目 §6.1 要的是 `(280,130) -> (520,130)`；`Text` 同理要 `(155,135) "开始"`。
 
@@ -452,14 +464,14 @@ grep -rnE "switch \(|\.typeName ===|instanceof (Rect|Circle|Ellipse|Line|Text)" 
 | IO | `tests/io/FileCommands.test.ts` | round-trip、缺 id 警告、viewBox 推导、转义 |
 | 端到端 | `tests/transcripts.test.ts` | 题目 transcript 全等 |
 
-测试总数 89，全部通过。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。
+测试总数 102，全部通过。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。
 
 ### 4.3 静态保障
 
 ```bash
 npm run typecheck     # tsc --noEmit，strict + noUncheckedIndexedAccess
 npm run build         # tsc -p tsconfig.build.json，产出 dist/
-npm test              # 89 tests
+npm test              # 102 tests
 npm run check         # 前两者合一
 ```
 

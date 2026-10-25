@@ -12,8 +12,10 @@ npm install
 npm run cli                  # 交互式 REPL
 npm run demo                 # 回放 scripts/demo.cli（§6 节会话）
 npm run flowchart            # 回放 scripts/flowchart.cli（§6.1 节会话）
-npm test                     # 89 个测试
+npx tsx src/cli/main.ts --script scripts/read.cli   # 读入外部 SVG
+npm test                     # 102 个测试
 npm run typecheck            # tsc --noEmit
+npm run check                # typecheck + test
 ```
 
 一次典型会话：
