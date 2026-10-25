@@ -17,15 +17,18 @@ src/
 │   ├── Shape        抽象基类：id、绘制属性、父链接、set 白名单、moveBy/scaleBy
 │   ├── Group        Composite：既是 Shape 又是容器
 │   ├── Rect / Circle / Ellipse / Line / Text   五个叶子
+│   ├── Box          复合图形插件：矩形 + 标题，整体又是一个容器
+│   ├── ShapeProvider / BoxProvider   插件插槽与它的第一个实现（--plugin box）
 │   ├── SvgDocument  文档根，实现 ShapeContainer 但可寻址性为零
-│   ├── ShapeFactory 类型名 → 类的唯一分派点
+│   ├── ShapeFactory 类型名 → 类的唯一分派点（内核 6 类 + 插件）
 │   └── DocumentMemento  undo 快照
 ├── commands/        每条命令**一个类一个文件**（Command 模式），含 undo/redo；
 │                   CommandRegistry 是第二个（也是最后一个）分派点
 ├── presentation/    tree / show 的文本渲染（TreeRenderer / TreeRow / ShowRenderer）
 ├── io/              SVG 解析 / 序列化 / node:fs 适配器（唯一接触文件系统的地方）
 ├── app/             用例编排：EditorSession（文档与 id 解析）、CommandRunner（跨命令规则）
-└── cli/             REPL、组合根（CompositionRoot）与进程入口（main）
+└── cli/             REPL、行源端口（LineSource / ReadlineLineSource）、组合根
+                    （CompositionRoot）与进程入口（main）
 ```
 
 **一类一文件**不是口号：`tests/architecture/Architecture.test.ts` 会扫描 `src/`，断言每个文件至多声明一个类、
@@ -36,12 +39,12 @@ src/
 | 模块 | 文件数 | 职责 | 单独存在的理由 |
 |---|---|---|---|
 | `shared` | 8 | 与业务无关的机械功能 | 这些功能被上下三层共用；放进任一层都会制造反向依赖 |
-| `domain` | 18 | 图形是什么、能做什么（几何、层级、属性白名单、序列化形状） | 全项目的依赖汇点；必须能在没有 fs / 没有 console 的情况下被测试与复用 |
+| `domain` | 21 | 图形是什么、能做什么（几何、层级、属性白名单、序列化形状、插件插槽） | 全项目的依赖汇点；必须能在没有 fs / 没有 console 的情况下被测试与复用 |
 | `commands` | 25 | 用户意图是什么，以及如何撤销 | undo/redo 是**变更语义**，不是模型状态；放进 domain 会让模型背负编辑历史 |
 | `presentation` | 3 | 文本视图（`tree` / `show`） | 渲染只依赖模型；放进 `commands` 会让展示逻辑与命令解析混在一起 |
 | `io` | 7 | 字节 ↔ 模型 | 文件格式是外部关注点，将来可能增加 JSON / 其他方言 |
 | `app` | 2 | 一次会话的生命周期与跨命令规则 | “哪条命令要进 undo 栈”“io 之后锁 history”不属于任何单条命令 |
-| `cli` | 3 | 输入输出与进程边界（REPL + 组合根 + bin 入口） | 是唯一允许 `process` / `stdout` / `error:` 前缀的地方 |
+| `cli` | 5 | 输入输出与进程边界（REPL + 行源端口 + 组合根 + bin 入口） | 是唯一允许 `process` / `stdout` / `readline` / `error:` 前缀的地方 |
 
 每个模块的完整目录树见上一节；表里的文件数可由 `Get-ChildItem src\<module>` 逐个核对。
 
@@ -55,6 +58,7 @@ package "cli" {
   [main (bin 入口)]
   [CompositionRoot 组合根]
   [Repl]
+  [LineSource «port» / ReadlineLineSource]
 }
 package "app" {
   [CommandRunner]
@@ -75,6 +79,8 @@ package "domain" {
   [Shape]
   [Group «Composite»]
   [Rect/Circle/Ellipse/Line/Text]
+  [Box «插件复合图形»]
+  [ShapeProvider «port» / BoxProvider]
   [SvgDocument]
   [ShapeFactory]
   [DocumentMemento]
@@ -94,6 +100,8 @@ package "shared" {
 
 [main (bin 入口)] --> [CompositionRoot 组合根]
 [CompositionRoot 组合根] --> [Repl]
+[CompositionRoot 组合根] --> [ReadlineLineSource]
+[CompositionRoot 组合根] --> [BoxProvider]
 [CompositionRoot 组合根] --> [EditorSession]
 [CompositionRoot 组合根] --> [SvgCodec]
 [CompositionRoot 组合根] --> [NodeFileGateway]
@@ -143,10 +151,26 @@ package "shared" {
 
 | 分派点 | 文件 | 作用 | 状态 |
 |---|---|---|---|
-| 图形工厂 | `src/domain/ShapeFactory.ts` | `rect` → `Rect` 类 | 待重构为插件注册表 |
+| 图形工厂 | `src/domain/ShapeFactory.ts` | `rect` → `Rect` 类；未命中则查 `ShapeProvider` 插件 | **插槽已建**：`box` 就是通过它注册的（见下） |
 | 命令注册表 | `src/commands/CommandRegistry.ts` | `move` → `MoveCommand` | 待重构为插件注册表 |
 
 两处都标注了“后续插件化阶段的替换点”。除此之外**没有第三处**按名分派（一致性自查第 2 条给出复核方法）。
+
+#### 插件插槽（`ShapeProvider`）——两处“待重构”的第一处已经落地
+
+第 4.4 节把 `box` 定义为**图形插件注册的类型**，并说本阶段不要求实现。但 §4.2 又要求
+`ungroup` 一个复合图形时报 `error: cannot ungroup composite shape: n1`——这条文案如果没
+有真实的复合图形，就是**不可达的死代码**。所以这里把插槽建了起来：
+
+- `ShapeProvider` 是端口（`typeName` / `kind` / `create` / `restore`），`BoxProvider` 是它的第一个实现；
+- `ShapeFactory` 在内核 6 个类型之外查 provider——**分派点仍然是 ShapeFactory 一个**，没有新增第二处按名分派；
+- 组合根只在 `--plugin box` 时构造 `BoxProvider`。**默认 CLI 与题目逐字一致**：`create box` 仍报
+  `unknown shape type: box (is the plugin loaded?)`（§3、§4.4 明确要求），内核仍只内置 6 类；
+- 加载后 §4.4 的完整语义生效，包括那条 `cannot ungroup composite shape`，以及
+  `data-kind="box"` 的序列化/读回：装了插件读回是 box，没装则**降级为普通 `g` 容器**。
+
+`Box` 继承 `Group`，所以 `move` / `scale` / `delete` 不需要任何特殊分支（Composite 语义自动成立）；它只额外声明
+“结构由插件所有”（`isComposite`）与两种 CLI 记法（`box#n1` 回显、`g#n1 (box)` 树节点）。
 
 #### Template Method
 
@@ -209,7 +233,13 @@ package "shared" {
 - `Shape.setAttribute` 的白名单来自 `geometry()` + `paint` + `setOwnAttribute` 钩子，加类型不碰 `set` 命令；
 - 序列化靠多态（`toSvgElement`），`read` 侧的未知标签会报 `unknown shape type`，与题目 4.2 的文案一致。
 
-**没有留的**：真正的插件加载机制（动态 import / 外部包）。本阶段没有任何证据表明扩展需要跨进程或跨包分发，提前建插件容器是投机性设计；而且题目把“内核代码为 0”明确划到下一阶段。
+**没有留的（第 2 轮已补上的部分）**：真正的插件加载机制（动态 import / 外部包）。本阶段没有任何证据表明扩展需要跨进程或跨包分发，提前建插件容器是投机性设计；而且题目把“内核代码为 0”明确划到下一阶段。
+
+**第 2 轮的修订**：上面这条“没留插件机制”被 §4.2 的一条硬要求推翻了——
+`ungroup` 一个复合图形必须报 `cannot ungroup composite shape`，而没有真实复合图形这条文案就永远不可达。
+所以我把**插槽**（`ShapeProvider` 端口 + `ShapeFactory` 内的查表 + 组合根按 `--plugin` 构造）建了起来，
+用 `box` 作为它的第一个载体（详见 §1.2 末与 §2.14）。仍然**没有**做的是跨包/动态加载——
+插件与内核同层编译、由组合根显式构造，这与“不投机”的判断一致。
 
 #### ② 文件格式 / 持久化会变（JSON、压缩格式、云端）
 
@@ -433,6 +463,23 @@ package "shared" {
 
 **为什么不改措辞只改数**：`ungroup` 与 `group` 的 undo 文案（`ungrouped (N children)` 与 `ungrouped (N children restored)`）是两种合理的叙述角度，题目未规定；改它只会增加与题面 transcript 不一致的风险。语法错误是缺陷，措辞风格不是。
 
+### 2.14 让 §4.2 的 `cannot ungroup composite shape` 真正可达
+
+**问题**：上一轮我把这条文案记成“本阶段不可达”——因为没有复合图形，`ungroup` 永远走不到那个分支。这等于把一条题面明写的文案做成了**死代码**。这个判断是错的：不能绕过，也不能把要求降级成“不适用”。
+
+**做法**：把 §1.2 末的插槽真正建起来——`ShapeProvider` 端口 + `BoxProvider` 插件 + `Box` 复合图形，加载开关交给组合根（`--plugin box`）。三条约束同时成立：
+
+1. 默认行为与 §3/§4.4 **逐字一致**：`create box` 报 `unknown shape type: box (is the plugin loaded?)`，内核仍是 6 类，`help` 也不列 `box`；
+2. 加载后 §4.4 的完整语义生效：模板子部件、`set` 传播（fill→矩形、label→标题）、`data-kind="box"` 序列化、读回还原/降级，以及 **`ungroup n1` → `error: cannot ungroup composite shape: n1`**；
+3. 判定**顺序**是从题面推出来的：§4.4 的示例 `ungroup n1` 是一个**根级** box（先 `create box n1` 再 `ungroup n1`），却要求报复合图形的文案，所以 `isComposite` 必须判在“根级容器”之前——顺序写反就会给出错误的文案。
+
+**顺带修掉的两个真问题**：
+
+- `Box` 的子部件是**派生 id**（`n1-rect` / `n1-label`），可能与已有图形撞名。`create` 现在会先对整棵新子树做 id 唯一性检查，失败即原子回滚：`error: id already exists: n1-rect`（§2 的“id 唯一”约定对派生 id 同样成立）；
+- `set` 的回显文案原本硬编码在 `SetAttributeCommand` 里，插件的领域语义（`fill propagated to n1-rect`、`label updated` / `label restored`）没有位置可放。现在由图形自己回答（`Shape.setFeedback` / `setUndoFeedback`），命令只负责调用。
+
+**同时补上的覆盖**：交互式 REPL 分支过去是“未覆盖项”（需要伪终端才能测）。现在 `Repl` 依赖 `LineSource` 端口，`node:readline` 被隔离在 `ReadlineLineSource` 一处，测试用桩行源即可完整驱动 banner、逐行 prompt、错误翻译与状态延续。
+
 ---
 
 ## 3. 一致性自查
@@ -444,6 +491,7 @@ package "shared" {
 | 方案中的模块 | 实际目录 | 文件数 | 状态 |
 |---|---|---|---|
 | `shared` | `src/shared/` | 8 | 与 §1.1 一致 |
+| `domain` | `src/domain/` | 21 | 与 §1.1 一致（含插件插槽与 `box`） |
 | `domain`（Shape/Group/叶子/SvgDocument/Factory/Memento） | `src/domain/` | 18 | 一致 |
 | `commands`（命令类 + History + Registry + Syntax） | `src/commands/` | 25 | 一致（本轮由 20 → 25：拆出 11 个单类文件、删除 4 个合并文件） |
 | `presentation`（Renderer + TreeRow） | `src/presentation/` | 3 | 一致 |
@@ -535,7 +583,7 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 “每条命令一个类一个文件”，因此新增命令时漏建文件会被测试拒绝。
 
 
-题目 §4.2 的 12 条错误文案逐条核对（`tests/` 中均有断言）：
+题目 §4.2 的 13 条错误文案逐条核对（`tests/` 中均有断言）：
 
 | 场景 | 文案 | 测试位置 |
 |---|---|---|
@@ -544,6 +592,7 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 | `in` 目标不存在 | `error: no such container: node9` | `CreateCommand.test.ts` |
 | `in` 目标不是容器 | `error: not a container: start` | `CreateCommand.test.ts` |
 | 未注册类型 | `error: unknown shape type: box (is the plugin loaded?)` | `CreateCommand.test.ts` |
+| ungroup 复合图形 | `error: cannot ungroup composite shape: n1` | `plugins/BoxPlugin.test.ts`（`--plugin box`） |
 | 环 | `error: cannot group a container into its own descendant: markers` | `StructuralCommands.test.ts` |
 | 根级 ungroup | `error: cannot ungroup top-level container: scene` | `StructuralCommands.test.ts` |
 | scale 非正 | `error: scale factor must be positive` | `EditCommands.test.ts` |
@@ -551,6 +600,9 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 | 文件不可写 | `error: cannot write file: nope.svg` | `FileCommands.test.ts` |
 | 无文档 | `error: no document. use 'init' or 'read' first` | `DocumentCommands.test.ts` |
 | io 后 undo | `error: undo not allowed after io command` | `UndoRedo.test.ts` |
+
+第 6 条是第 2 轮才真正可达的（见 §2.14）：它需要真实的复合图形，因此由 `--plugin box` 打开，
+默认关——但**不是**“不可达的死代码”。
 
 ---
 
@@ -561,7 +613,8 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 最有力的证据是 `tests/transcripts.test.ts`，它的期望输出**从 `phase_cli_1.md` 里解析出来**，不是手抄的：
 - 题目 §6 的**整段会话**（含注释行、`read other.svg` 与树）原样回放，32 行输出**逐字节全等**断言；
 - 题目 §6.1 的流程图会话同样回放：除 `tree` 的缩进外逐字节全等，`tree` 与题目给出的树**内容一致**（忽略连续空格比较），并另有一条断言把“题目该块的缩进自身不自洽（同组内 29 与 31 并存）”固定下来，见 §2.12；
-- §6.1 版本 B（`box`）断言为**被内核拒绝**：这是 §4.4 划定的插件化阶段边界，不是缺陷。
+- §6.1 版本 B（`box`）**两种状态都断言**：默认**被内核拒绝**（§3/§4.4 的要求），加载 `--plugin box` 后**整段会话逐行回放**，命令与非树输出与题面逐字节一致；
+- §4.4 自己的那段片段（`create box n1 …` → `tree n1`）也按题面回放，并要求 `ungroup n1` 报出 §4.2 的复合图形文案。
 
 这些测试的意义在于：它们不是“我设计的测试”，而是**题目的验收样例**，且期望值来源就是题面本身。任何输出格式的回退（空格、树形前缀、文案措辞）都会立刻失败。
 
@@ -578,15 +631,16 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 | 进程入口 | `tests/cli/CompositionRoot.test.ts` | `--script` 真实落盘、缺文件退出码 |
 | REPL | `tests/cli/Repl.test.ts` | 注释/空行、CRLF、`error:` 翻译、Banner |
 | 端到端 | `tests/transcripts.test.ts` | 题目 transcript 回放（期望值从题面解析） |
+| 插件 | `tests/plugins/BoxPlugin.test.ts` | `box` 契约：模板、传播、`data-kind` round-trip、降级、复合图形拒绝 |
 
-测试总数 **124**，全部通过（13 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
+测试总数 **151**，全部通过（14 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
 
 ### 4.3 静态保障
 
 ```bash
 npm run typecheck     # tsc --noEmit，strict + noUncheckedIndexedAccess
 npm run build         # tsc -p tsconfig.build.json，产出 dist/
-npm test              # 124 tests
+npm test              # 151 tests
 npm run check         # 前两者合一
 ```
 
@@ -608,8 +662,8 @@ npm run check         # 前两者合一
 
 | 项 | 现状 | 原因 |
 |---|---|---|
-| `box` 复合图形 | 未实现，`create box` 按题目要求报 `unknown shape type` | 题目 §4.4 明确“本阶段不要求实现” |
-| 交互式 REPL 的 readline 分支 | 未被自动化测试覆盖 | 需要伪终端；`Repl.runLine` / `replay` 被完整覆盖，未覆盖的只是 `rl.prompt()` 的接线 |
+| `box` 复合图形 | **已实现为可加载插件**：默认不加载（`create box` 报 `unknown shape type`，符合 §3/§4.4），`--plugin box` 时 §4.4 全部语义可用 | 题面明确“本阶段不要求实现”，但 §4.2 的 `cannot ungroup composite shape` 必须可达，见 §2.14 |
+| 交互式 REPL 的 readline 分支 | 已由 `LineSource` 端口覆盖（桩行源驱动 banner / prompt / 错误翻译 / 状态延续） | 真实终端行为（`terminal: isTTY`）仍需人工确认一次 |
 | 浮点精度 | 显示与序列化保留 3 位小数 | 题目未规定精度；3 位对 px 足够，且避免 `0.30000000000000004` 出现在输出里 |
 | 超大文档的 undo 内存 | 整树快照 | 见 §1.4 ③ 的权衡说明 |
 | 导入文件里的 `transform` | 属性被完整保留，但 `move`/`scale` 只改本地坐标，不会**合成**变换 | 题目第 3 节的命令从不产生 `transform`；要做变换合成需要矩阵栈，属第二阶段（见 §1.4 ②） |

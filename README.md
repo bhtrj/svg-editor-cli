@@ -14,7 +14,8 @@ npm run cli                  # 交互式 REPL
 npm run demo                 # 回放 scripts/demo.cli（§6 节会话）
 npm run flowchart            # 回放 scripts/flowchart.cli（§6.1 节会话）
 npx tsx src/cli/main.ts --script scripts/read.cli   # 读入外部 SVG
-npm test                     # 124 个测试（含架构规则）
+npx tsx src/cli/main.ts --plugin box --script scripts/box.cli   # 加载 box 复合图形插件
+npm test                     # 151 个测试（含架构规则）
 npm run typecheck            # tsc --noEmit
 npm run check                # typecheck + test
 ```
@@ -46,15 +47,22 @@ saved to examples/out.svg (2 elements)
 | 目录 | 内容 |
 |---|---|
 | `src/shared/` | 零业务知识的工具类与端口：`EditorError`、`Numbers`、`Plural`、`Xml`、`Tokenizer`、`Arguments`、`FileGateway` |
-| `src/domain/` | 图形模型：`Shape` 抽象、`Group`（Composite）、五种叶子、`SvgDocument`、`ShapeFactory`、`DocumentMemento` |
+| `src/domain/` | 图形模型：`Shape` 抽象、`Group`（Composite）、五种叶子、`SvgDocument`、`ShapeFactory`、`DocumentMemento`；插件插槽 `ShapeProvider` 与复合图形 `Box` |
 | `src/commands/` | Command 对象：**每条命令一个类一个文件**，含 `undo`/`redo`；`CommandRegistry` 按名分派 |
 | `src/presentation/` | `tree` / `show` 的文本渲染 |
 | `src/io/` | SVG 解析/序列化（`fast-xml-parser`，保序）与 `node:fs` 适配器（唯一接触文件系统的地方） |
 | `src/app/` | 会话与用例编排：`EditorSession`、`CommandRunner` |
-| `src/cli/` | REPL、组合根（`CompositionRoot`）与进程入口（`main`） |
-| `tests/` | 架构规则 + 单元 + 命令级 + 进程入口 + transcript 回放测试（124 条） |
+| `src/cli/` | REPL、行源端口（`LineSource` / `ReadlineLineSource`）、组合根（`CompositionRoot`）与进程入口（`main`） |
+| `tests/` | 架构规则 + 单元 + 命令级 + 进程入口 + 插件 + transcript 回放测试（151 条） |
 | `scripts/` | 可回放的 `.cli` 会话脚本 |
 | `examples/` | 由脚本生成的 SVG 示例 |
+
+## 插件：`--plugin box`
+
+`box`（§4.4 的“带标题的矩形框”）以 `ShapeProvider` 插件形式实现，**默认不加载**——这正是
+题面的要求：`create box` 默认报 `error: unknown shape type: box (is the plugin loaded?)`。
+加 `--plugin box` 后 §4.4 的全部语义生效（模板子部件、`set` 传播、`data-kind` 序列化与读回、
+以及 `ungroup n1` → `error: cannot ungroup composite shape: n1`）。见 [doc/README.md](doc/README.md) §1.2 与 §2.14。
 
 ## 架构约束是被测试执行的
 

@@ -7,6 +7,7 @@ package "cli（最外层）" {
   [main（bin 入口）]
   [CompositionRoot 组合根]
   [Repl]
+  [LineSource «port» /\nReadlineLineSource]
 }
 
 package "app（用例编排）" {
@@ -37,6 +38,8 @@ package "domain（核心，只依赖 shared）" {
   [Shape]
   [Group «Composite»]
   [Rect / Circle /\nEllipse / Line / Text]
+  [Box «插件复合图形»]
+  [ShapeProvider «port» /\nBoxProvider]
   [SvgDocument]
   [ShapeFactory]
   [DocumentMemento]
@@ -58,6 +61,8 @@ package "shared（端口与工具类）" {
 
 main（bin 入口） --> CompositionRoot 组合根
 CompositionRoot 组合根 --> Repl
+CompositionRoot 组合根 --> ReadlineLineSource
+CompositionRoot 组合根 --> BoxProvider
 CompositionRoot 组合根 --> EditorSession
 CompositionRoot 组合根 --> SvgCodec
 CompositionRoot 组合根 --> NodeFileGateway
@@ -75,9 +80,13 @@ SvgCodec ..|> DocumentCodec
 NodeFileGateway ..|> FileGateway
 SvgDecoder --> ShapeFactory
 Group «Composite» --> Shape
+Box «插件复合图形» --> Group «Composite»
+BoxProvider ..|> ShapeProvider «port»
+BoxProvider --> Box «插件复合图形»
 SvgDocument --> Shape
 TreeRenderer --> Shape
 ShowRenderer --> Shape
+Repl --> LineSource «port»
 
 note right of commands
   依赖方向：commands 只依赖 domain、presentation 与端口，
@@ -94,6 +103,13 @@ end note
 note bottom of presentation
   presentation 位于 domain 之上、commands/io 之下：
   纯渲染、无副作用，可供两处复用。
+end note
+
+note right of BoxProvider
+  插件插槽：ShapeFactory 从内核 6 类之外的
+  类型名查到 provider（分派仍在 ShapeFactory 内）。
+  组合根只在 --plugin box 时构造它，
+  因此默认 CLI 的 create box 仍报 unknown shape type。
 end note
 
 @enduml
