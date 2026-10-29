@@ -5,9 +5,6 @@
 一个用 **TypeScript + 面向对象** 实现的 SVG 编辑器命令行工具：命令式编辑、Composite 图形树、
 Command 模式撤销/重做、SVG 读写。
 
-本文件就是提交文档，四节全部写在下面：**1. 架构方案**、**2. 过程记录**、**3. 一致性自查**、
-**4. 质量保证手段**。文中每条结论都能在 `src/` 里按 `path` 或 `path:line` 复核。
-
 ## 快速开始
 
 ```bash
@@ -85,10 +82,8 @@ src/
                     （CompositionRoot）与进程入口（main）
 ```
 
-**一类一文件**不是口号：`tests/architecture/Architecture.test.ts` 会扫描 `src/`，断言每个文件至多声明一个类、
+**一类一文件**：`tests/architecture/Architecture.test.ts` 会扫描 `src/`，断言每个文件至多声明一个类、
 且文件名等于类名（`main.ts` 是唯一豁免——它是 bin 入口，不声明类）。
-
-每个模块的职责，以及它**为什么存在**（而不是被合并到邻居里）：
 
 | 模块 | 文件数 | 职责 | 单独存在的理由 |
 |---|---|---|---|
@@ -100,9 +95,9 @@ src/
 | `app` | 2 | 一次会话的生命周期与跨命令规则 | “哪条命令要进 undo 栈”“io 之后锁 history”不属于任何单条命令 |
 | `cli` | 5 | 输入输出与进程边界（REPL + 行源端口 + 组合根 + bin 入口） | 是唯一允许 `process` / `stdout` / `readline` / `error:` 前缀的地方 |
 
-每个模块的完整目录树见上一节；表里的文件数可由 `Get-ChildItem src\<module>` 逐个核对。
+表里的文件数可由 `Get-ChildItem src\<module>` 逐个核对。
 
-同一张图的 PlantUML 组件图（源文件见 `doc/components.puml`，可渲染版本以该文件为准）：
+同一张图的 PlantUML 组件图（源文件 `doc/components.puml`）：
 
 ```plantuml
 @startuml
@@ -181,14 +176,14 @@ package "shared" {
 
 ### 1.2 设计模式的选择与落地
 
-#### Command（题目要求，必须使用）
+#### Command
 
 - **接口**：`src/commands/Command.ts` 定义 `CliCommand { execute() }` 与 `UndoableCommand extends CliCommand { undo(); redo(); }`。
 - **落地**：19 个命令各占一个类一个文件（`CreateCommand`、`MoveCommand`、`GroupCommand`…），每个类自己解析参数、自己执行、自己生成成功回显与 undo/redo 回显。
 - **收益**：`group g1 c1 box t1` 天然是**一个** undo 单元——因为它就是**一个对象**，无需“合并事务”的机制。
 - **反例规避**：没有 `EditorSession.execute(name, args)` 里的巨型 switch；命令对象由 `CommandRegistry` 构造，会话只拿到 `CliCommand` 接口。
 
-#### Composite（本项目的核心考查点）
+#### Composite
 
 - `Shape` 是 Component，`Group` 是 Composite，五个叶子是 Leaf。
 - `moveBy` / `scaleBy` 在 `Shape` 中是**默认实现**（遍历自己的 `NumericAttribute` 单元格），`Group` 覆写为递归。
@@ -199,9 +194,9 @@ package "shared" {
 
 - `DocumentMemento` 抓取整棵树的深拷贝；`AbstractEditCommand` 在 `apply()` 前后各抓一次。
 - 选它而不是“每条命令写一个反向操作”的原因：`delete` 必须回到**原父容器、原 z-order**，`group` 必须还原 N 个图形各自的归属——反向操作要写 18 份且容易漏；快照是 1 份且不会错。
-- 代价：每步 O(n) 内存。在本文档规模（几十个图形）下可忽略，已记入变化点假设。
+- 代价：每步 O(n) 内存。在几十个图形的规模下可忽略，已记入变化点假设。
 
-#### Factory + Registry（唯一两处按名分派）
+#### Factory + Registry
 
 | 分派点 | 文件 | 作用 | 状态 |
 |---|---|---|---|
@@ -210,7 +205,7 @@ package "shared" {
 
 两处都标注了“后续插件化阶段的替换点”。除此之外**没有第三处**按名分派（一致性自查第 2 条给出复核方法）。
 
-#### 插件插槽（`ShapeProvider`）——两处“待重构”的第一处已经落地
+#### 插件插槽（`ShapeProvider`）
 
 第 4.4 节把 `box` 定义为**图形插件注册的类型**，并说本阶段不要求实现。但 §4.2 又要求
 `ungroup` 一个复合图形时报 `error: cannot ungroup composite shape: n1`——这条文案如果没
@@ -230,7 +225,7 @@ package "shared" {
 
 - `AbstractEditCommand` 固化“快照 → apply → 快照，失败则回滚”的骨架，子类只实现 `apply()` / `renderUndo()` / `renderRedo()`。
 
-#### Strategy（轻量）
+#### Strategy
 
 - `TreeRenderer` / `ShowRenderer` 是独立的展示策略对象，`tree` / `show` 命令只持有它们；将来要加 JSON 输出或彩色输出，只加一个渲染器。
 
@@ -486,7 +481,7 @@ package "shared" {
 1. 测试改为“忽略注释”，避免文档字符串触发规则；
 2. 把 `presentation` 明确画进层次（在 `domain` 之上、`commands`/`io` 之下），文档 §1.3 表格与 PlantUML 同步更新，并写明理由（渲染无副作用、不进 `commands` 以免展示逻辑与命令解析混合）。
 
-**这件事的价值**：它把“文档说的”和“代码做的”强制对齐——如果我只写散文，这个不一致会一直留在提交里。
+**结果**：架构测试暴露了这个不一致，两份文件随之对齐。
 
 ### 2.12 对 tree 对齐的判断曾被推翻一次（重新测量后修正）
 
@@ -726,9 +721,9 @@ npm run check         # 前两者合一
 （`parsePositiveNumber`、`describeTokens`、`detach`、`topLevelGroup`、`DocumentOrder` 这些死代码就是这样被清掉的：
 要么编译期报“从未使用”，要么被架构测试的规则扫描暴露。）
 
-**数字类断言的复核方法**：本文里出现的每个文件数与测试数，都来自脚本对文件系统的统计（`src/*/**.ts` 分模块计数、`tests/**.test.ts` 计数），而不是手工累加；题面三张表（§3 命令、§4.1 类型、§4.2 错误文案）由 `tests/spec/SpecCoverage.test.ts` 在每次 `npm test` 时与实现比对。§2.15 记录了三处曾经写错、被这个方法查出来的数字。
+**数字类断言的复核方法**：文中的每个文件数与测试数都来自脚本对文件系统的统计（`src/*/**.ts` 分模块计数、`tests/**.test.ts` 计数），不是手工累加；题面三张表（§3 命令、§4.1 类型、§4.2 错误文案）由 `tests/spec/SpecCoverage.test.ts` 在每次 `npm test` 时与实现比对。§2.15 记录了三处曾经写错、被这个方法查出来的数字。
 
-### 4.4 我对代码质量有信心的依据
+### 4.4 代码质量的具体依据
 
 1. **规则被测试执行，而不是被声明**：范式层与分层规则共 11 条断言（§3.2 的表），`npm test` 每次都会跑。开发过程中就是靠它发现“一个文件多个类”“命令层依赖 presentation 与文档不符”这两个问题的。
 2. **题面本身也是断言来源**：`transcripts.test.ts` 回放题面的两段会话（期望值从 `phase_cli_1.md` 解析），`SpecCoverage.test.ts` 对账题面的三张表。文档不能靠“我记得是这样”与代码保持一致。
@@ -738,7 +733,7 @@ npm run check         # 前两者合一
 5. **没有一行 `any`**：由架构测试断言；`unknown` 只在 XML 解析边界出现，并在同文件内被收窄成 `RawSvgElement`。
 6. **可回放**：`scripts/*.cli` 是可以直接 `npm run demo` / `npm run flowchart` 重跑的真实会话，`examples/*.svg` 是它们的产物——文档里描述的每个效果都有可执行的对应物。回归也是靠它抓到的（§2.10：`npm test` 全绿但 `npm run demo` 无输出）。
 
-### 4.5 已知未覆盖项（如实记录）
+### 4.5 未覆盖项
 
 | 项 | 现状 | 原因 |
 |---|---|---|
