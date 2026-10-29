@@ -1,5 +1,9 @@
 # svg-editor（Lab1 Phase 1）
 
+> **git 仓库地址：https://github.com/bhtrj/svg-editor-cli**
+>
+> 仓库为公开状态；最终交付版本打有 `final` 标签，`git checkout final` 即为提交版本。
+
 一个用 **TypeScript + 面向对象** 实现的 SVG 编辑器命令行工具：命令式编辑、Composite 图形树、
 Command 模式撤销/重做、SVG 读写。范式层（一类一文件、无过程式自由函数、按名分派只两处）与
 分层依赖方向都由 `tests/architecture` 机械校验。
