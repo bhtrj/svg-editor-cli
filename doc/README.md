@@ -1,11 +1,63 @@
-# Lab1 Phase 1 架构文档：SVG 编辑器 CLI
+# svg-editor（Lab1 Phase 1）
 
-> **git 仓库地址：https://github.com/bhtrj/svg-editor-cli** （公开；最终交付版本带 `final` 标签）
->
-> 本文是 `doc/README.md`，对应提交要求的四节：**架构方案**、**过程记录**、**一致性自查**、**质量保证手段**。
-> 文中所有依赖结论都可在 `src/` 中按 `path:line` 复核；一致性自查一节给出了复核命令。
+> **git 仓库地址：https://github.com/bhtrj/svg-editor-cli**
 
----
+一个用 **TypeScript + 面向对象** 实现的 SVG 编辑器命令行工具：命令式编辑、Composite 图形树、
+Command 模式撤销/重做、SVG 读写。
+
+本文件就是提交文档，四节全部写在下面：**1. 架构方案**、**2. 过程记录**、**3. 一致性自查**、
+**4. 质量保证手段**。文中每条结论都能在 `src/` 里按 `path` 或 `path:line` 复核。
+
+## 快速开始
+
+```bash
+npm install
+npm run cli                  # 交互式 REPL
+npm run demo                 # 回放 scripts/demo.cli（§6 节会话）
+npm run flowchart            # 回放 scripts/flowchart.cli（§6.1 节会话）
+npx tsx src/cli/main.ts --script scripts/read.cli   # 读入外部 SVG
+npx tsx src/cli/main.ts --plugin box --script scripts/box.cli   # 加载 box 复合图形插件
+npm test                     # 161 个测试（含架构规则与题面对账）
+npm run typecheck            # tsc --noEmit
+npm run check                # typecheck + test
+```
+
+一次典型会话：
+
+```text
+$ npm run cli
+svg-editor 0.1 — type 'help' for commands
+
+svg> init 800 600
+canvas 800x600 created
+svg> create g flowchart
+g#flowchart created
+svg> create rect start 120 100 160 60 #4a90d9 in flowchart
+rect#start created in g#flowchart
+svg> tree
+svg (800x600)
+└── g#flowchart
+    └── rect#start  x=120 y=100 w=160 h=60 fill=#4a90d9
+svg> save examples/out.svg
+saved to examples/out.svg (2 elements)
+```
+
+`save` 产出的 `.svg` 可直接用浏览器或 VSCode 的 SVG Preview 打开。
+
+## 目录
+
+| 目录 | 内容 |
+|---|---|
+| `src/shared/` | 零业务知识的工具类与端口：`EditorError`、`Numbers`、`Plural`、`Xml`、`Tokenizer`、`Arguments`、`FileGateway` |
+| `src/domain/` | 图形模型：`Shape` 抽象、`Group`（Composite）、五种叶子、`SvgDocument`、`ShapeFactory`、`DocumentMemento`；插件插槽 `ShapeProvider` 与复合图形 `Box` |
+| `src/commands/` | Command 对象：**每条命令一个类一个文件**，含 `undo`/`redo`；`CommandRegistry` 按名分派 |
+| `src/presentation/` | `tree` / `show` 的文本渲染 |
+| `src/io/` | SVG 解析/序列化（`fast-xml-parser`，保序）与 `node:fs` 适配器（唯一接触文件系统的地方） |
+| `src/app/` | 会话与用例编排：`EditorSession`、`CommandRunner` |
+| `src/cli/` | REPL、行源端口（`LineSource` / `ReadlineLineSource`）、组合根（`CompositionRoot`）与进程入口（`main`） |
+| `tests/` | 架构规则 + 单元 + 命令级 + 进程入口 + 插件 + 题面对账 + transcript 回放（161 条） |
+| `scripts/` | 可回放的 `.cli` 会话脚本 |
+| `examples/` | 由脚本生成的 SVG 示例 |
 
 ## 1. 架构方案
 
@@ -698,3 +750,28 @@ npm run check         # 前两者合一
 | `main.ts` 不声明类 | 架构测试对它豁免“文件名 = 类名” | 它是 bin 入口（`#!/usr/bin/env node` + 一次调用），不承载任何逻辑；逻辑都在 `CompositionRoot` |
 | 题目 §6.1 的 `tree` 缩进 | 内容一致，缩进不同（我们统一列 32，题面在同一兄弟组里混用 29 与 31） | 题面该块自身不自洽，不存在能同时满足它的确定性规则；§6 与 `read` 两块已逐字节一致，见 §2.12 |
 
+## 插件：`--plugin box`
+
+`box`（§4.4 的“带标题的矩形框”）以 `ShapeProvider` 插件形式实现，**默认不加载**——这正是
+题面的要求：`create box` 默认报 `error: unknown shape type: box (is the plugin loaded?)`。
+加 `--plugin box` 后 §4.4 的全部语义生效（模板子部件、`set` 传播、`data-kind` 序列化与读回、
+以及 `ungroup n1` → `error: cannot ungroup composite shape: n1`）。详见 §1.2 与 §2.14。
+
+## 架构约束是被测试执行的
+
+题面 §2.1 的范式要求与分层规则，每一条都由 `tests/architecture/Architecture.test.ts` 在
+`npm test` 时扫描 `src/` 断言，而不是写在文档里靠自觉：
+
+| 断言 | 对应规则 |
+|---|---|
+| 每个文件至多一个 `class` | 一类一文件 |
+| 文件名 === 类名 | 一类一文件 |
+| `src/` 内无模块级 `function`（`main.ts` 除外） | 禁止过程式自由函数 |
+| `switch (` 只出现在 `ShapeFactory` | 按名分派只允许两处 |
+| 无 `instanceof Rect/Circle/Ellipse/Line/Text/Group` | Composite 多态 |
+| 模块 import 只向内（按 §1.3 的允许表） | 依赖方向 |
+| `node:fs` 只出现在 `NodeFileGateway` | IO 隔离 |
+| 无 `: any` | 类型纪律 |
+
+这 8 条在开发中真的拦下过问题（见 §2.8、§2.9、§2.11），也做过变异测试：往 `src/domain/`
+注入"反向 import 上层""一个文件两个类""模块级函数""工厂外的 switch"，四种违规全部被测试抓到。
