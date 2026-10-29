@@ -15,7 +15,7 @@ npm run demo                 # 回放 scripts/demo.cli（§6 节会话）
 npm run flowchart            # 回放 scripts/flowchart.cli（§6.1 节会话）
 npx tsx src/cli/main.ts --script scripts/read.cli   # 读入外部 SVG
 npx tsx src/cli/main.ts --plugin box --script scripts/box.cli   # 加载 box 复合图形插件
-npm test                     # 151 个测试（含架构规则）
+npm test                     # 161 个测试（含架构规则与题面对账）
 npm run typecheck            # tsc --noEmit
 npm run check                # typecheck + test
 ```
@@ -53,7 +53,7 @@ saved to examples/out.svg (2 elements)
 | `src/io/` | SVG 解析/序列化（`fast-xml-parser`，保序）与 `node:fs` 适配器（唯一接触文件系统的地方） |
 | `src/app/` | 会话与用例编排：`EditorSession`、`CommandRunner` |
 | `src/cli/` | REPL、行源端口（`LineSource` / `ReadlineLineSource`）、组合根（`CompositionRoot`）与进程入口（`main`） |
-| `tests/` | 架构规则 + 单元 + 命令级 + 进程入口 + 插件 + transcript 回放测试（151 条） |
+| `tests/` | 架构规则 + 单元 + 命令级 + 进程入口 + 插件 + 题面对账 + transcript 回放（161 条） |
 | `scripts/` | 可回放的 `.cli` 会话脚本 |
 | `examples/` | 由脚本生成的 SVG 示例 |
 

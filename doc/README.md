@@ -463,7 +463,21 @@ package "shared" {
 
 **为什么不改措辞只改数**：`ungroup` 与 `group` 的 undo 文案（`ungrouped (N children)` 与 `ungrouped (N children restored)`）是两种合理的叙述角度，题目未规定；改它只会增加与题面 transcript 不一致的风险。语法错误是缺陷，措辞风格不是。
 
-### 2.14 让 §4.2 的 `cannot ungroup composite shape` 真正可达
+### 2.15 提交前复查：文档里的数字自己说错了
+
+**怎么发现**：交付前我写脚本把「文档声称的」与「文件系统实际的」逐项比对，结果自查这章自己有三处错：
+
+| 位置 | 文档说 | 实际 | 性质 |
+|---|---|---|---|
+| §3.1 表格 | `domain` 占两行（18 与 21） | 21 个文件 | 重构后新增一行却没删旧行，读者会看到矛盾的两个数 |
+| §3.1 表格 | `cli` 3 个文件 | 5 个（多了 `LineSource` / `ReadlineLineSource`） | 上一轮加文件后没回填 |
+| §3.3 | 「§4.2 的 **13** 条错误文案」 | **12** 条（表格自己也只列了 12 行） | 数错了 |
+
+**为什么这类错必须修**：`一致性自查` 这一章的用途就是回答「方案与实际是否一致」。如果它自己的数字是错的，这章就从证据变成了噪音——评审看到的第一个矛盾就出在讲一致性的地方。
+
+**同时做的加固**：新增 `tests/spec/SpecCoverage.test.ts`，把题面的 §3 命令表、§4.1 类型表、§4.2 错误文案表解析出来与实现比对（161 条测试中的 10 条）。这样「题面有而实现没有」或「实现了但不在题面」都会让 `npm test` 变红，不必依赖我下次记得手工数一遍。
+
+**教训**：数字属于断言，不属于叙述。凡是在文档里写数量，就必须有脚本能复核它——否则它迟早变成错的。
 
 **问题**：上一轮我把这条文案记成“本阶段不可达”——因为没有复合图形，`ungroup` 永远走不到那个分支。这等于把一条题面明写的文案做成了**死代码**。这个判断是错的：不能绕过，也不能把要求降级成“不适用”。
 
@@ -490,14 +504,15 @@ package "shared" {
 
 | 方案中的模块 | 实际目录 | 文件数 | 状态 |
 |---|---|---|---|
-| `shared` | `src/shared/` | 8 | 与 §1.1 一致 |
-| `domain` | `src/domain/` | 21 | 与 §1.1 一致（含插件插槽与 `box`） |
-| `domain`（Shape/Group/叶子/SvgDocument/Factory/Memento） | `src/domain/` | 18 | 一致 |
+| `shared`（错误、格式化、词法、端口） | `src/shared/` | 8 | 与 §1.1 一致 |
+| `domain`（Shape/Group/叶子/`box`/插件插槽/文档/工厂/Memento） | `src/domain/` | 21 | 与 §1.1 一致 |
 | `commands`（命令类 + History + Registry + Syntax） | `src/commands/` | 25 | 一致（本轮由 20 → 25：拆出 11 个单类文件、删除 4 个合并文件） |
 | `presentation`（Renderer + TreeRow） | `src/presentation/` | 3 | 一致 |
 | `io`（Reader/Decoder/Encoder/Codec/Gateway + 2 个 Raw 类型） | `src/io/` | 7 | 一致（`FileStore` 命名为 `NodeFileGateway`，端口叫 `FileGateway`） |
 | `app`（EditorSession + CommandRunner） | `src/app/` | 2 | 一致；工厂按方案放在 `domain`（它构造领域对象，属于领域知识） |
-| `cli`（REPL + 组合根 + bin 入口） | `src/cli/` | 3 | 一致 |
+| `cli`（REPL + 行源端口 + 组合根 + bin 入口） | `src/cli/` | 5 | 一致（第 2 轮抽出 `LineSource` / `ReadlineLineSource`） |
+
+合计 **71** 个源文件。本表每个数字都由脚本与文件系统逐项比对过（方法见 §4.3）。
 
 **两条与“最初草图”不同的决定（保留在记录里）**：
 1. **`presentation` 独立成层**，且允许被 `commands` / `io` 依赖：渲染器只读模型，不产生副作用；放进 `cli` 会让展示逻辑与进程生命周期纠缠，放进 `commands` 会让 `show`/`tree` 的实现细节混进命令解析。
@@ -582,8 +597,11 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 命令注册表（`CommandRegistry.ts`）的 19 个条目与上表 19 行一一对应；`tests/architecture` 另外断言
 “每条命令一个类一个文件”，因此新增命令时漏建文件会被测试拒绝。
 
+这张表与题面 §3 的对应关系**不再靠人眼核对**：`tests/spec/SpecCoverage.test.ts` 会解析题面 §3 的命令行
+（含 `front / back` 这种一行两命令的写法），断言「题面有的都已注册」「注册的都在题面里」「语法逐条相同」三项。
 
-题目 §4.2 的 13 条错误文案逐条核对（`tests/` 中均有断言）：
+
+题目 §4.2 的 12 条错误文案逐条核对（`tests/` 中均有断言）：
 
 | 场景 | 文案 | 测试位置 |
 |---|---|---|
@@ -631,16 +649,21 @@ Select-String -Path src\*\*.ts -Pattern "instanceof (Rect|Circle|Ellipse|Line|Te
 | 进程入口 | `tests/cli/CompositionRoot.test.ts` | `--script` 真实落盘、缺文件退出码 |
 | REPL | `tests/cli/Repl.test.ts` | 注释/空行、CRLF、`error:` 翻译、Banner |
 | 端到端 | `tests/transcripts.test.ts` | 题目 transcript 回放（期望值从题面解析） |
+| 题目对账 | `tests/spec/SpecCoverage.test.ts` | §3 命令表 / §4.1 类型参数表 / §4.2 错误文案表逐条与实现比对 |
 | 插件 | `tests/plugins/BoxPlugin.test.ts` | `box` 契约：模板、传播、`data-kind` round-trip、降级、复合图形拒绝 |
 
-测试总数 **151**，全部通过（14 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
+测试总数 **161**，全部通过（15 个文件）。驱动方式是**真实的分发器**（`CommandRunner` + `CommandRegistry` + `EditorSession`），只有 `FileGateway` 换成内存实现——所以测的是真实路径，不是 mock 出来的假路径。唯一真实落盘的测试是入口那条，它写进临时目录并在 `afterEach` 清理。
+
+其中 `tests/spec/SpecCoverage.test.ts` 是**提交前复查时补上的一层**：它把题面自己的三张表（§3 的 17 条命令、§4.1 的 6 个类型、§4.2 的 12 条错误文案）解析出来，断言
+「题面有的命令都已注册、注册的都已写进题面、语法逐条相同」「类型参数与可选性逐条对应」「每条错误文案都能在 `src/` 里找到消息体、并在测试里被断言」。
+`transcripts.test.ts` 证明的是**会话**，这一层证明的是**目录**——两者合起来，题面与实现之间不再有靠人眼维持的一致性。
 
 ### 4.3 静态保障
 
 ```bash
 npm run typecheck     # tsc --noEmit，strict + noUncheckedIndexedAccess
 npm run build         # tsc -p tsconfig.build.json，产出 dist/
-npm test              # 151 tests
+npm test              # 161 tests
 npm run check         # 前两者合一
 ```
 
@@ -649,9 +672,12 @@ npm run check         # 前两者合一
 （`parsePositiveNumber`、`describeTokens`、`detach`、`topLevelGroup`、`DocumentOrder` 这些死代码就是这样被清掉的：
 要么编译期报“从未使用”，要么被架构测试的规则扫描暴露。）
 
+**数字类断言的复核方法**：本文里出现的每个文件数与测试数，都来自脚本对文件系统的统计（`src/*/**.ts` 分模块计数、`tests/**.test.ts` 计数），而不是手工累加；题面三张表（§3 命令、§4.1 类型、§4.2 错误文案）由 `tests/spec/SpecCoverage.test.ts` 在每次 `npm test` 时与实现比对。§2.15 记录了三处曾经写错、被这个方法查出来的数字。
+
 ### 4.4 我对代码质量有信心的依据
 
 1. **规则被测试执行，而不是被声明**：范式层与分层规则共 11 条断言（§3.2 的表），`npm test` 每次都会跑。本轮就是靠它发现“一个文件多个类”“命令层依赖 presentation 与文档不符”这两个问题的。
+2. **题面本身也是断言来源**：`transcripts.test.ts` 回放题面的两段会话（期望值从 `phase_cli_1.md` 解析），`SpecCoverage.test.ts` 对账题面的三张表。文档不能靠“我记得是这样”与代码保持一致。
 2. **删除测试的语义最强**：`delete box` → `undo` → 断言 `show box` 的 `parent=g#markers` 且 z-order 复原。这条测试同时验证了 Memento、父容器恢复、顺序恢复三件事。
 3. **失败路径有断言**：每条 `error:` 文案都有一条测试；并且至少 3 条测试断言“失败前后 `tree` 完全相同”（`create`、`group`、`set`）。
 4. **不变式在模型层**：环检测、正数校验、id 唯一性都在 `domain` 内，不依赖命令层“记得校验”。将来接 GUI 通道时这些不变式依然生效。
